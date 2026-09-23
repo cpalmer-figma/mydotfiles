@@ -1,0 +1,8 @@
+[user]
+        name = Chris Palmer
+        email = cpalmer@figma.com
+[alias]
+        br = branch
+        co = checkout
+        pullff = pull --ff-only
+        st = status

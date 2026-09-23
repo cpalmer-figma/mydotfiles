@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Relaunch Codex or Claude Code in a restored tmux pane, resuming the pane's own
+# conversation. ai-sessions-save writes these commands into resurrect saves.
+#
+# Usage: ai-resume <codex|claude> <session-id|-> <dir>   ("-" starts fresh)
+
+tool=$1 id=$2 dir=$3
+cd "$dir" 2>/dev/null
+
+case "$tool" in
+  codex)
+    [[ $id == - ]] && exec codex
+    exec codex resume -C "$PWD" "$id"
+    ;;
+  claude)
+    [[ $id == - ]] && exec claude
+    exec claude --resume "$id"
+    ;;
+  *)
+    echo "ai-resume: unknown tool '$tool'" >&2
+    exit 1
+    ;;
+esac
