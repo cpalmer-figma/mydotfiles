@@ -9,8 +9,36 @@ for dependency in stow tmux git; do
 done
 
 if ((${#missing[@]})); then
-  sudo apt-get update
-  sudo apt-get install -y "${missing[@]}"
+  case "$(uname -s)" in
+    Darwin)
+      if ! command -v brew >/dev/null 2>&1; then
+        for brew_dir in /opt/homebrew/bin /usr/local/bin; do
+          if [ -x "$brew_dir/brew" ]; then
+            PATH="$brew_dir:$PATH"
+            export PATH
+            break
+          fi
+        done
+      fi
+      if ! command -v brew >/dev/null 2>&1; then
+        echo "Homebrew is required to install: ${missing[*]}. Install it from https://brew.sh/ and rerun this script." >&2
+        exit 1
+      fi
+      brew install "${missing[@]}"
+      ;;
+    Linux)
+      if ! command -v apt-get >/dev/null 2>&1; then
+        echo "apt-get is required to install: ${missing[*]}. Install them manually and rerun this script." >&2
+        exit 1
+      fi
+      sudo apt-get update
+      sudo apt-get install -y "${missing[@]}"
+      ;;
+    *)
+      echo "Unsupported operating system. Install ${missing[*]} manually and rerun this script." >&2
+      exit 1
+      ;;
+  esac
 fi
 
 # Keep downloaded plugins in the home directory, outside this repository.

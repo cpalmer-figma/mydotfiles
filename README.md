@@ -21,7 +21,7 @@ cd ~/mydotfiles
 
 The installer:
 
-1. Installs `stow`, `tmux`, and `git` via `apt-get` if they're missing.
+1. Installs missing `stow`, `tmux`, and `git` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
 2. Symlinks every package into `$HOME` with `stow`.
 3. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
