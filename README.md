@@ -6,7 +6,7 @@ My personal dotfiles, managed with [GNU Stow](https://www.gnu.org/software/stow/
 
 | Package | Files | Description |
 | ------- | ----- | ----------- |
-| `codex` | `.codex/AGENTS.md` | Shared instructions for Codex. |
+| `codex` | `.codex/AGENTS.md`, `.codex/config.toml` | Shared instructions and default configuration for Codex. |
 | `git`   | `.gitconfig` | User identity and a few aliases (`st`, `co`, `br`, `pullff`). |
 | `tmux`  | `.tmux.conf`, `.tmux/scripts/` | tmux config: `C-a` prefix, vim-style pane navigation, custom status bar, and session persistence via tmux-resurrect/continuum. |
 
