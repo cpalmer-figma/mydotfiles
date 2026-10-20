@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 
 missing=()
-for dependency in stow tmux git; do
+for dependency in stow tmux git gh; do
   command -v "$dependency" >/dev/null 2>&1 || missing+=("$dependency")
 done
 
@@ -39,6 +39,11 @@ if ((${#missing[@]})); then
       exit 1
       ;;
   esac
+fi
+
+extensions="$(gh extension list)"
+if ! printf '%s\n' "$extensions" | grep -qE '^gh stack[[:space:]]'; then
+  gh extension install github/gh-stack
 fi
 
 # Keep downloaded plugins in the home directory, outside this repository.

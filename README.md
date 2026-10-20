@@ -22,9 +22,10 @@ cd ~/mydotfiles
 
 The installer:
 
-1. Installs missing `stow`, `tmux`, and `git` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
-2. Symlinks every package into `$HOME` with `stow`.
-3. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
+1. Installs missing `stow`, `tmux`, `git`, and `gh` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
+2. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
+3. Symlinks every package into `$HOME` with `stow`.
+4. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
 Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
 
