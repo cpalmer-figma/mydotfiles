@@ -1,8 +1,10 @@
 # Databox setup and verification
 
 Read this reference when the initial readiness check finds missing setup,
-configuration, authentication, or required tooling. Reuse working components;
-run the relevant smoke checks after setup or repair, not before every task.
+configuration, authentication, or tooling required by the next operation.
+Read only the sections needed for that gap. File edits need no environment
+setup; synthetic verification needs no analytics manifest. Reuse working
+components and run relevant smoke checks after setup or repair.
 
 ## Discover and reuse
 
@@ -76,6 +78,7 @@ grant. On a laptop, preserve the supported external-browser authentication.
 
 ## Make the checker workflows available
 
+Use this section only for a workflow that needs these skills or integrations.
 Reuse already-discoverable skills. If absent, locate these existing skill
 directories in the checkout and link them into the user's Codex skill directory,
 normally `~/.agents/skills`:
@@ -106,6 +109,10 @@ skill's workflow.
 
 ## Prepare freshness validation
 
+Use this section only when the selected validation requires manifest-based
+freshness resolution under the current CLI's rules. Skip it for local runs,
+synthetic verification, and validations exempt from freshness gating.
+
 Check the current CLI's accepted analytics manifest locations and reuse a valid
 production `dbt_analytics` manifest. If missing, install the analytics project's
 declared packages with the Databox `dbt deps`, then run `reset_defer` from
@@ -122,8 +129,9 @@ while the manifest is missing or parsing is incomplete.
 Use a small existing checker fixture, not a newly authored production checker
 or a full warehouse verification suite. Choose the checks that exercise the
 capabilities being set up or repaired; reuse checks already completed in this
-session. Inspect the checkout's fixtures before
-choosing the names; the following have served as setup smoke checks:
+session. Inspect the checkout's fixtures before choosing names. These commands
+are examples for different capabilities, not a required sequence; run only
+those relevant to the repair:
 
 ```sh
 consistency-check doctor
@@ -133,10 +141,11 @@ consistency-check run test_success
 consistency-check validate test_ai_credit_limit_active_status
 ```
 
-Confirm the synthetic verification actually executes both an expected violation
-and an expected pass, with zero false positives or false negatives. Confirm a
-local run writes only to the configured development schema and completes its
-triage enrichment. Local runs must not invoke Dagster or notifications.
+When testing synthetic verification, confirm it executes both an expected
+violation and an expected pass, with zero false positives or false negatives.
+When testing a local run, confirm it writes only to the configured development
+schema and completes its triage enrichment. Local runs must not invoke Dagster
+or notifications.
 
 For compile/debug support, this uses the configured Databox profile and avoids
 analytics deferral; substitute the discovered checkout path:
@@ -146,11 +155,9 @@ dbt --debug compile --project-dir <checkout>/dbt/consistency_checks \
   --profile databox --target databox --no-defer --select test_success
 ```
 
-For an alert investigation, check read access to the current investigation tables in
-`FIGLYTICS.CONSISTENCY_CHECK`: `CHECK_RUN`, `CHECK_RUN_INPUT`, `CHECK_RESULT`,
-`SLACK_ALERT`, and `LINEAR_DELIVERY`. Use zero-row queries for access checks.
-For a visible `PERSISTED__*` table, check only permitted framework columns and
-`DIAGNOSTICS`; never access `DIAGNOSTICS_SENSITIVE`.
+For an alert investigation, follow the current investigation skill to identify
+the required tables and permitted columns. Use zero-row queries for access
+checks; never access `DIAGNOSTICS_SENSITIVE`.
 
 If local execution fails during triage, inspect the current
 `macros/local/create_local_triaged_results.sql` and its documented source. One

@@ -34,7 +34,7 @@ Earlier versions of the installer linked `~/.codex` itself into this repo, so Co
 
 ## Codex skills
 
-`consistency-checker-dev` applies whenever a task would add, edit, run, or verify a Figma consistency checker, including requests abbreviated as “CC.” It first checks that the Coder box has working Databox and the other prerequisites for the task, completes any missing setup, then continues the checker work. A working environment is reused. You can also invoke it explicitly as `$consistency-checker-dev`.
+`consistency-checker-dev` applies whenever a task would add, edit, run, or verify a Figma consistency checker, including requests abbreviated as “CC.” It checks and repairs only the prerequisites needed by each operation, then continues the checker work. File edits can proceed without Databox, and synthetic verification does not need a production analytics manifest. A working environment is reused. You can also invoke it explicitly as `$consistency-checker-dev`.
 
 Skills install under `~/.agents/skills` with the `codex` package. After pulling new skills, run `stow --restow --no-folding -t "$HOME" codex` from this repo, or rerun `./install.sh`. Restart Codex if a new skill does not appear in the skill picker.
 
