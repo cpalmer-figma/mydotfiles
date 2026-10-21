@@ -91,49 +91,39 @@ done
 
 # Codex rewrites ~/.codex/config.toml when it saves settings, which would
 # replace a link, so stow skips that file (see codex/.stow-local-ignore).
-# Instead, set this repository's top-level settings in it and keep the rest.
-if [ ! -e "$codex_config" ]; then
-  codex_existing=/dev/null
-else
-  codex_existing="$codex_config"
-fi
+# Keep this repository's top-level settings in a marked block at the top.
+codex_existing="$codex_config"
+[ -e "$codex_existing" ] || codex_existing=/dev/null
 merged="$(mktemp "$codex_config.XXXXXX")"
-awk '
-  function key_of(line) {
-    sub(/^[ \t]*/, "", line)
-    sub(/[ \t]*=.*/, "", line)
-    return line
-  }
-  # Top-level keys must come before the first table.
-  function add_missing(   i, added) {
-    for (i = 1; i <= count; i++) {
-      if (!(order[i] in found)) {
-        print setting[order[i]]
-        added = 1
+{
+  echo '# BEGIN mydotfiles — edit in the dotfiles repo'
+  cat "$codex_package/config.toml"
+  echo '# END mydotfiles'
+  awk '
+    # Collect managed keys to remove old copies outside the marked block.
+    FILENAME == ARGV[1] {
+      if ($0 ~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) {
+        key = $0
+        sub(/[ \t]*=.*/, "", key)
+        sub(/^[ \t]*/, "", key)
+        managed[key] = 1
       }
+      next
     }
-    return added
-  }
-  # The first file holds the settings from this repository.
-  FNR == NR {
-    if ($0 ~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) {
-      order[++count] = key_of($0)
-      setting[key_of($0)] = $0
+    $0 == "# BEGIN mydotfiles — edit in the dotfiles repo" { block = 1; next }
+    $0 == "# END mydotfiles" { block = 0; next }
+    block { next }
+    /^[ \t]*\[/ { tables = 1 }
+    !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
+      key = $0
+      sub(/[ \t]*=.*/, "", key)
+      sub(/^[ \t]*/, "", key)
+      if (key in managed) next
     }
-    next
-  }
-  !tables && /^[ \t]*\[/ {
-    if (add_missing()) print ""
-    tables = 1
-  }
-  !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ && (key_of($0) in setting) {
-    if (!(key_of($0) in found)) print setting[key_of($0)]
-    found[key_of($0)] = 1
-    next
-  }
-  { print }
-  END { if (!tables) add_missing() }
-' "$codex_package/config.toml" "$codex_existing" > "$merged"
+    { print }
+    END { if (block) exit 1 }
+  ' "$codex_package/config.toml" "$codex_existing"
+} > "$merged"
 mv "$merged" "$codex_config"
 
 tpm_dir="$HOME/.tmux/plugins/tpm"

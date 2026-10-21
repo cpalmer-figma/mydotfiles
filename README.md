@@ -25,7 +25,7 @@ The installer:
 1. Installs missing `stow`, `tmux`, `git`, and `gh` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
 2. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
 3. Symlinks each file in every package into `$HOME` with `stow --no-folding`, never whole directories, so apps that write into a directory such as `~/.codex` don't write into this repo.
-4. Sets the top-level settings from `codex/.codex/config.toml`, such as `model`, in `~/.codex/config.toml`, and keeps everything else Codex has saved there. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
+4. Copies `codex/.codex/config.toml` into a `# BEGIN mydotfiles` / `# END mydotfiles` block at the top of `~/.codex/config.toml`, replacing that block on each run and preserving the rest. The repo config must contain only top-level settings, such as `model`. Existing copies of those settings outside the block are removed to avoid duplicate TOML keys. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
 5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
 Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
