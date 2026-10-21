@@ -1,0 +1,2 @@
+# install.sh sets these settings in ~/.codex/config.toml instead of linking it.
+^/\.codex/config\.toml$

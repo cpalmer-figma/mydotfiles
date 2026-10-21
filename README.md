@@ -6,7 +6,7 @@ My personal dotfiles, managed with [GNU Stow](https://www.gnu.org/software/stow/
 
 | Package | Files | Description |
 | ------- | ----- | ----------- |
-| `codex` | `.codex/AGENTS.md`, `.codex/config.toml` | Shared instructions and default configuration for Codex. |
+| `codex` | `.codex/AGENTS.md`, `.codex/config.toml` | Shared instructions and default settings for Codex. `config.toml`'s settings are written into `~/.codex/config.toml` rather than linked (see below). |
 | `git`   | `.gitconfig` | User identity and a few aliases (`st`, `co`, `br`, `pullff`). |
 | `tmux`  | `.tmux.conf`, `.tmux/scripts/` | tmux config: `C-a` prefix, vim-style pane navigation, custom status bar, and session persistence via tmux-resurrect/continuum. |
 
@@ -24,10 +24,13 @@ The installer:
 
 1. Installs missing `stow`, `tmux`, `git`, and `gh` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
 2. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
-3. Symlinks every package into `$HOME` with `stow`.
-4. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
+3. Symlinks each file in every package into `$HOME` with `stow --no-folding`, never whole directories, so apps that write into a directory such as `~/.codex` don't write into this repo.
+4. Sets the top-level settings from `codex/.codex/config.toml`, such as `model`, in `~/.codex/config.toml`, and keeps everything else Codex has saved there. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
+5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
 Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
+
+Earlier versions of the installer linked `~/.codex` itself into this repo, so Codex kept its sessions and other state here. The installer moves that directory back to `~/.codex` and restores this repo's files.
 
 ## tmux highlights
 
