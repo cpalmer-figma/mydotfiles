@@ -6,7 +6,7 @@ My personal dotfiles, managed with [GNU Stow](https://www.gnu.org/software/stow/
 
 | Package | Files | Description |
 | ------- | ----- | ----------- |
-| `codex` | `.codex/AGENTS.md`, `.codex/config.toml` | Shared instructions and default settings for Codex. `config.toml`'s settings are written into `~/.codex/config.toml` rather than linked (see below). |
+| `codex` | `.codex/AGENTS.md`, `.codex/config.toml`, `.agents/skills/` | Shared instructions, default settings, and personal skills for Codex. `config.toml`'s settings are written into `~/.codex/config.toml` rather than linked (see below). |
 | `git`   | `.gitconfig` | User identity and a few aliases (`st`, `co`, `br`, `pullff`). |
 | `tmux`  | `.tmux.conf`, `.tmux/scripts/` | tmux config: `C-a` prefix, vim-style pane navigation, custom status bar, and session persistence via tmux-resurrect/continuum. |
 
@@ -31,6 +31,12 @@ The installer:
 Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
 
 Earlier versions of the installer linked `~/.codex` itself into this repo, so Codex kept its sessions and other state here. The installer moves that directory back to `~/.codex` and restores this repo's files.
+
+## Codex skills
+
+`consistency-checker-dev` applies whenever a task would add, edit, run, or verify a Figma consistency checker, including requests abbreviated as “CC.” It first checks that the Coder box has working Databox and the other prerequisites for the task, completes any missing setup, then continues the checker work. A working environment is reused. You can also invoke it explicitly as `$consistency-checker-dev`.
+
+Skills install under `~/.agents/skills` with the `codex` package. After pulling new skills, run `stow --restow --no-folding -t "$HOME" codex` from this repo, or rerun `./install.sh`. Restart Codex if a new skill does not appear in the skill picker.
 
 ## tmux highlights
 

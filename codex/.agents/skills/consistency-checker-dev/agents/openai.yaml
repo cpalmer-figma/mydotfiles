@@ -1,0 +1,6 @@
+interface:
+  display_name: "Consistency Checker Development"
+  short_description: "Check setup, then add, edit, or run a consistency checker"
+  default_prompt: "Use $consistency-checker-dev to confirm my environment is ready, complete any missing setup, and carry out my consistency checker task."
+policy:
+  allow_implicit_invocation: true
