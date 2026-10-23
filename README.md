@@ -24,7 +24,7 @@ The installer:
 
 1. Installs missing `stow`, `tmux`, `git`, and `gh` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
 2. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
-3. Symlinks each file in every package into `$HOME` with `stow --no-folding`, never whole directories, so apps that write into a directory such as `~/.codex` don't write into this repo.
+3. Symlinks package files into `$HOME` with `stow --no-folding`, so apps that write into a directory such as `~/.codex` don't write into this repo. Each Codex skill directory is linked separately because Codex skips symlinked `SKILL.md` files.
 4. Copies `codex/.codex/config.toml` into a `# BEGIN mydotfiles` / `# END mydotfiles` block at the top of `~/.codex/config.toml`, replacing that block on each run and preserving the rest. The repo config must contain only top-level settings, such as `model`. Existing copies of those settings outside the block are removed to avoid duplicate TOML keys. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
 5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
@@ -36,7 +36,7 @@ Earlier versions of the installer linked `~/.codex` itself into this repo, so Co
 
 `consistency-checker-dev` applies whenever a task would add, edit, run, or verify a Figma consistency checker, including requests abbreviated as “CC.” It checks and repairs only the prerequisites needed by each operation, then continues the checker work. File edits can proceed without Databox, and synthetic verification does not need a production analytics manifest. A working environment is reused. You can also invoke it explicitly as `$consistency-checker-dev`.
 
-Skills install under `~/.agents/skills` with the `codex` package. After pulling new skills, run `stow --restow --no-folding -t "$HOME" codex` from this repo, or rerun `./install.sh`. Restart Codex if a new skill does not appear in the skill picker.
+Each skill directory is symlinked under `~/.agents/skills`. After pulling new skills, rerun `./install.sh`. The installer migrates earlier file links to directory links and preserves unrelated files and skills; conflicting files must be moved aside before rerunning. Restart Codex if a new skill does not appear in the skill picker.
 
 ## tmux highlights
 

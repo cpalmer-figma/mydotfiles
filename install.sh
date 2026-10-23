@@ -89,6 +89,32 @@ for package in */; do
   stow --restow --no-folding -t "$HOME" "${package%/}"
 done
 
+# Codex follows skill-directory links but skips symlinked SKILL.md files.
+mkdir -p "$HOME/.agents/skills"
+for skill in "$(pwd -P)/codex/.agents/skills/"*/; do
+  [ -f "$skill/SKILL.md" ] || continue
+  skill="${skill%/}"
+  target="$HOME/.agents/skills/${skill##*/}"
+  if [ -L "$target" ] && [ "$(readlink "$target")" = "$skill" ]; then
+    continue
+  fi
+  # Migrate old file links. Stow removes only links to this skill, then
+  # remove empty directories while preserving any unrelated files.
+  if [ -d "$target" ] && [ ! -L "$target" ]; then
+    stow --delete -d "${skill%/*}" -t "$target" "${skill##*/}"
+    find "$target" -depth -type d -empty -delete
+    if [ -e "$target" ]; then
+      echo "Cannot migrate skill: $target contains other files. Move it aside and rerun this script." >&2
+      exit 1
+    fi
+  fi
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    echo "Cannot link skill: $target already exists. Move it aside and rerun this script." >&2
+    exit 1
+  fi
+  ln -s "$skill" "$target"
+done
+
 # Codex rewrites ~/.codex/config.toml when it saves settings, which would
 # replace a link, so stow skips that file (see codex/.stow-local-ignore).
 # Keep this repository's top-level settings in a marked block at the top.

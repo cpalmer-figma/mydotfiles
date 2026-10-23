@@ -1,2 +1,4 @@
 # install.sh sets these settings in ~/.codex/config.toml instead of linking it.
 ^/\.codex/config\.toml$
+# install.sh links individual skill directories so SKILL.md stays a regular file.
+^/\.agents$
