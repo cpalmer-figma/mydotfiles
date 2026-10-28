@@ -136,9 +136,10 @@ merged="$(mktemp "$codex_config.XXXXXX")"
       }
       next
     }
-    $0 == "# BEGIN mydotfiles — edit in the dotfiles repo" { block = 1; next }
-    $0 == "# END mydotfiles" { block = 0; next }
-    block { next }
+    # Codex may drop marker comments when rewriting its settings. Remove
+    # managed top-level keys by name rather than relying on a closing marker.
+    $0 == "# BEGIN mydotfiles — edit in the dotfiles repo" { next }
+    $0 == "# END mydotfiles" { next }
     /^[ \t]*\[/ { tables = 1 }
     !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
       key = $0
@@ -147,7 +148,6 @@ merged="$(mktemp "$codex_config.XXXXXX")"
       if (key in managed) next
     }
     { print }
-    END { if (block) exit 1 }
   ' "$codex_package/config.toml" "$codex_existing"
 } > "$merged"
 mv "$merged" "$codex_config"
