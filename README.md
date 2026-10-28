@@ -34,6 +34,8 @@ Earlier versions of the installer linked `~/.codex` itself into this repo, so Co
 
 ## Codex skills
 
+`babysit-pr` monitors a PR's review feedback every 10 minutes, baselines existing feedback, and recommends changes or replies based on the relevant code. It stays quiet when nothing changes and stops when the PR closes or merges. It does not change code or interact with reviewers. Invoke it with `$babysit-pr` and a PR URL. Monitoring state and schedules stay local to the machine running the monitor; the skill itself syncs through this repo.
+
 `consistency-checker-dev` applies whenever a task would add, edit, run, or verify a Figma consistency checker, including requests abbreviated as “CC.” It checks and repairs only the prerequisites needed by each operation, then continues the checker work. File edits can proceed without Databox, and synthetic verification does not need a production analytics manifest. A working environment is reused. You can also invoke it explicitly as `$consistency-checker-dev`.
 
 Each skill directory is symlinked under `~/.agents/skills`. After pulling new skills, rerun `./install.sh`. The installer migrates earlier file links to directory links and preserves unrelated files and skills; conflicting files must be moved aside before rerunning. Restart Codex if a new skill does not appear in the skill picker.

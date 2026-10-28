@@ -1,0 +1,4 @@
+interface:
+  display_name: "Babysit PR"
+  short_description: "Monitor new PR feedback and recommend responses"
+  default_prompt: "Use $babysit-pr to monitor this PR every 10 minutes and recommend how to address new review feedback."
