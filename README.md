@@ -41,6 +41,10 @@ Earlier versions of the installer linked `~/.codex` itself into this repo, so Co
 
 `consistency-checker-dev` applies whenever a task would add, edit, run, or verify a Figma consistency checker, including requests abbreviated as “CC.” It checks and repairs only the prerequisites needed by each operation, then continues the checker work. File edits can proceed without Databox, and synthetic verification does not need a production analytics manifest. A working environment is reused. You can also invoke it explicitly as `$consistency-checker-dev`.
 
+`figma-sinatra-dev` applies to Figma Ruby/Sorbet, Sinatra backend, and internal AdminApp changes. It covers Ruby panels, authorization order, billing mutations, strict date handling, and tests, with separate references loaded as needed.
+
+`figma-pr-prep` applies when preparing a Figma PR or writing its description. It covers screenshot evidence (including the Coder browser-testing entry point), product sign-off, boundary coverage, translation timing, and dictionary reordering. Ongoing feedback checks stay in `babysit-pr`.
+
 Each skill directory is symlinked under `~/.agents/skills`. After pulling new skills, rerun `./install.sh`. The installer migrates earlier file links to directory links and preserves unrelated files and skills; conflicting files must be moved aside before rerunning. Restart Codex if a new skill does not appear in the skill picker.
 
 ## tmux highlights

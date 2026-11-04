@@ -17,3 +17,8 @@
 - Find and read the Linear ticket encoded in the machine's hostname to locate additional context for work
 - Always consult the user and obtain explicit approval before editing or changing Linear tickets in any way
 
+## Figma Build Knowledge
+
+- For Figma monorepo Ruby/Sorbet, Sinatra backend, or internal AdminApp work, use the `figma-sinatra-dev` skill before choosing an implementation.
+- When preparing a Figma PR or its description, use the `figma-pr-prep` skill. Use the `babysit-pr` skill for ongoing review-feedback checks.
+

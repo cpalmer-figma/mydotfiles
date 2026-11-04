@@ -1,0 +1,3 @@
+interface:
+  display_name: "Figma Sinatra Development"
+  short_description: "Build Figma Ruby backends and internal admin panels"
