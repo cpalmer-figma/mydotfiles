@@ -89,6 +89,11 @@ for package in */; do
   stow --restow --no-folding -t "$HOME" "${package%/}"
 done
 
+# Fetch only master and my branches in the Figma monorepo.
+if [ -e "$HOME/figma/figma/.git" ]; then
+  git -C "$HOME/figma/figma" remote set-branches origin master 'cpalmer/*'
+fi
+
 # Codex follows skill-directory links but skips symlinked SKILL.md files.
 mkdir -p "$HOME/.agents/skills"
 for skill in "$(pwd -P)/codex/.agents/skills/"*/; do

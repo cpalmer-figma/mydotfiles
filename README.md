@@ -7,7 +7,7 @@ My personal dotfiles, managed with [GNU Stow](https://www.gnu.org/software/stow/
 | Package | Files | Description |
 | ------- | ----- | ----------- |
 | `codex` | `.codex/AGENTS.md`, `.codex/config.toml`, `.agents/skills/` | Shared instructions, default settings, and personal skills for Codex. `config.toml`'s settings are written into `~/.codex/config.toml` rather than linked (see below). |
-| `git`   | `.gitconfig` | User identity and a few aliases (`st`, `co`, `br`, `pullff`). |
+| `git`   | `.gitconfig` | User identity, performance settings, and a few aliases (`st`, `co`, `br`, `pullff`). |
 | `tmux`  | `.tmux.conf`, `.tmux/scripts/` | tmux config: `C-a` prefix, vim-style pane navigation, custom status bar, and session persistence via tmux-resurrect/continuum. |
 
 Each top-level directory is a Stow package whose contents mirror their location in `$HOME`.
@@ -27,6 +27,8 @@ The installer:
 3. Symlinks package files into `$HOME` with `stow --no-folding`, so apps that write into a directory such as `~/.codex` don't write into this repo. Each Codex skill directory is linked separately because Codex skips symlinked `SKILL.md` files.
 4. Copies `codex/.codex/config.toml` into a `# BEGIN mydotfiles` / `# END mydotfiles` block at the top of `~/.codex/config.toml`, replacing that block on each run and preserving the rest. The repo config must contain only top-level settings, such as `model`. Existing copies of those settings outside the block are removed to avoid duplicate TOML keys. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
 5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
+
+When `~/figma/figma` exists, the installer also limits its `origin` fetch rules to `master` and `cpalmer/*`.
 
 Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
 
