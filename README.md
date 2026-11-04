@@ -9,6 +9,7 @@ My personal dotfiles, managed with [GNU Stow](https://www.gnu.org/software/stow/
 | `codex` | `.codex/AGENTS.md`, `.codex/config.toml`, `.agents/skills/` | Shared instructions, default settings, and personal skills for Codex. `config.toml`'s settings are written into `~/.codex/config.toml` rather than linked (see below). |
 | `git`   | `.gitconfig` | User identity, performance settings, and a few aliases (`st`, `co`, `br`, `pullff`). |
 | `tmux`  | `.tmux.conf`, `.tmux/scripts/` | tmux config: `C-a` prefix, vim-style pane navigation, custom status bar, and session persistence via tmux-resurrect/continuum. |
+| `zsh`   | `.zshrc` | `wait-minifig` helper with the active profile, elapsed time, and ready counts. Requires `jq` and a checkout at `~/figma/figma`. |
 
 Each top-level directory is a Stow package whose contents mirror their location in `$HOME`.
 
