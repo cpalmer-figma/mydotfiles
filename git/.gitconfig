@@ -13,3 +13,6 @@
 	required = true
 [core]
 	untrackedcache = true
+	fsmonitor = true
+[feature]
+	manyFiles = true
