@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+codex_defaults_installed=no
+trap 'status=$?; if [ "$status" -ne 0 ]; then
+  echo "Dotfiles installation incomplete (exit $status). Codex defaults installed: $codex_defaults_installed. Resolve the error above and rerun ./install.sh." >&2
+fi' EXIT
+
 cd "$(dirname "$0")"
 
 missing=()
@@ -41,14 +46,6 @@ if ((${#missing[@]})); then
   esac
 fi
 
-extensions="$(gh extension list)"
-if ! printf '%s\n' "$extensions" | grep -qE '^gh stack[[:space:]]'; then
-  gh extension install github/gh-stack
-fi
-
-# Keep downloaded plugins in the home directory, outside this repository.
-mkdir -p "$HOME/.tmux/plugins"
-
 codex_package="codex/.codex"
 codex_config="$HOME/.codex/config.toml"
 
@@ -80,6 +77,76 @@ if [ -L "$HOME/.codex" ] && [ "$(cd "$HOME/.codex" && pwd -P)" = "$(pwd -P)/$cod
   fi
 fi
 # END LEGACY MIGRATION
+
+# Codex rewrites ~/.codex/config.toml when it saves settings, which would
+# replace a link, so stow skips that file (see codex/.stow-local-ignore).
+# Keep this repository's top-level settings in a marked block at the top.
+mkdir -p "$HOME/.codex"
+codex_existing="$codex_config"
+[ -e "$codex_existing" ] || codex_existing=/dev/null
+merged="$(mktemp "$codex_config.XXXXXX")"
+{
+  echo '# BEGIN mydotfiles — edit in the dotfiles repo'
+  cat "$codex_package/config.toml"
+  echo '# END mydotfiles'
+  awk '
+    # Collect managed keys to remove old copies outside the marked block.
+    FILENAME == ARGV[1] {
+      if ($0 ~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) {
+        key = $0
+        sub(/[ \t]*=.*/, "", key)
+        sub(/^[ \t]*/, "", key)
+        managed[key] = 1
+      }
+      next
+    }
+    # Codex may drop marker comments when rewriting its settings. Remove
+    # managed top-level keys by name rather than relying on a closing marker.
+    $0 == "# BEGIN mydotfiles — edit in the dotfiles repo" { next }
+    $0 == "# END mydotfiles" { next }
+    /^[ \t]*\[/ { tables = 1 }
+    !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
+      key = $0
+      sub(/[ \t]*=.*/, "", key)
+      sub(/^[ \t]*/, "", key)
+      if (key in managed) next
+    }
+    { print }
+  ' "$codex_package/config.toml" "$codex_existing"
+} > "$merged"
+mv "$merged" "$codex_config"
+
+# Check each managed top-level assignment, including duplicate detection.
+awk '
+  /^[ \t]*\[/ { tables = 1 }
+  !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
+    key = $0
+    sub(/[ \t]*=.*/, "", key)
+    sub(/^[ \t]*/, "", key)
+    value = $0
+    sub(/^[^=]*=[ \t]*/, "", value)
+    sub(/[ \t]*$/, "", value)
+    if (FILENAME == ARGV[1]) expected[key] = value
+    else if (key in expected) {
+      count[key]++
+      if (value != expected[key]) failed = 1
+    }
+  }
+  END {
+    for (key in expected) if (count[key] != 1) failed = 1
+    exit failed
+  }
+' "$codex_package/config.toml" "$codex_config"
+codex_defaults_installed=yes
+echo "Verified Codex defaults in $codex_config:"
+cat "$codex_package/config.toml"
+
+# Coder may pre-create an empty .zshrc. Remove only a zero-byte regular
+# file; preserve nonempty files and all existing links for Stow to handle.
+if [ ! -L "$HOME/.zshrc" ] && [ -f "$HOME/.zshrc" ] && [ ! -s "$HOME/.zshrc" ]; then
+  echo "Removing empty $HOME/.zshrc so Stow can symlink the repo version."
+  rm "$HOME/.zshrc"
+fi
 
 for package in */; do
   [ -d "$package" ] || continue
@@ -120,42 +187,13 @@ for skill in "$(pwd -P)/codex/.agents/skills/"*/; do
   ln -s "$skill" "$target"
 done
 
-# Codex rewrites ~/.codex/config.toml when it saves settings, which would
-# replace a link, so stow skips that file (see codex/.stow-local-ignore).
-# Keep this repository's top-level settings in a marked block at the top.
-codex_existing="$codex_config"
-[ -e "$codex_existing" ] || codex_existing=/dev/null
-merged="$(mktemp "$codex_config.XXXXXX")"
-{
-  echo '# BEGIN mydotfiles — edit in the dotfiles repo'
-  cat "$codex_package/config.toml"
-  echo '# END mydotfiles'
-  awk '
-    # Collect managed keys to remove old copies outside the marked block.
-    FILENAME == ARGV[1] {
-      if ($0 ~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) {
-        key = $0
-        sub(/[ \t]*=.*/, "", key)
-        sub(/^[ \t]*/, "", key)
-        managed[key] = 1
-      }
-      next
-    }
-    # Codex may drop marker comments when rewriting its settings. Remove
-    # managed top-level keys by name rather than relying on a closing marker.
-    $0 == "# BEGIN mydotfiles — edit in the dotfiles repo" { next }
-    $0 == "# END mydotfiles" { next }
-    /^[ \t]*\[/ { tables = 1 }
-    !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
-      key = $0
-      sub(/[ \t]*=.*/, "", key)
-      sub(/^[ \t]*/, "", key)
-      if (key in managed) next
-    }
-    { print }
-  ' "$codex_package/config.toml" "$codex_existing"
-} > "$merged"
-mv "$merged" "$codex_config"
+extensions="$(gh extension list)"
+if ! printf '%s\n' "$extensions" | grep -qE '^gh stack[[:space:]]'; then
+  gh extension install github/gh-stack
+fi
+
+# Keep downloaded plugins in the home directory, outside this repository.
+mkdir -p "$HOME/.tmux/plugins"
 
 tpm_dir="$HOME/.tmux/plugins/tpm"
 if [ ! -e "$tpm_dir" ] && [ ! -L "$tpm_dir" ]; then
@@ -163,3 +201,5 @@ if [ ! -e "$tpm_dir" ] && [ ! -L "$tpm_dir" ]; then
 fi
 
 "$tpm_dir/bin/install_plugins"
+
+echo "Dotfiles installation complete."

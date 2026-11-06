@@ -24,16 +24,20 @@ cd ~/mydotfiles
 The installer:
 
 1. Installs missing `stow`, `tmux`, `git`, and `gh` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
-2. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
-3. Symlinks package files into `$HOME` with `stow --no-folding`, so apps that write into a directory such as `~/.codex` don't write into this repo. Each Codex skill directory is linked separately because Codex skips symlinked `SKILL.md` files.
-4. Copies `codex/.codex/config.toml` into a `# BEGIN mydotfiles` / `# END mydotfiles` block at the top of `~/.codex/config.toml`, replacing that block on each run and preserving the rest. The repo config must contain only top-level settings, such as `model`. Existing copies of those settings outside the block are removed to avoid duplicate TOML keys. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
+2. Applies and verifies the Codex defaults before Stow, skill migration, or plugin setup can fail. It copies `codex/.codex/config.toml` into a `# BEGIN mydotfiles` / `# END mydotfiles` block at the top of `~/.codex/config.toml`, replacing that block on each run and preserving the rest. The repo config must contain only top-level settings, such as `model`. Existing copies of those settings outside the block are removed to avoid duplicate TOML keys. Codex rewrites that file when it saves a setting, which would replace a symlink, so stow skips it (`codex/.stow-local-ignore`). This repo's values win, so change them here rather than on a machine.
+3. Removes an existing zero-byte regular `~/.zshrc` (such as the placeholder Coder creates), then symlinks package files into `$HOME` with `stow --no-folding`. Nonempty files and existing symlinks are left for Stow to handle. Apps that write into a directory such as `~/.codex` don't write into this repo. Each Codex skill directory is linked separately because Codex skips symlinked `SKILL.md` files.
+4. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
 5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
+
+The installer prints the verified Codex defaults and reports whether they were installed if a later step fails. A successful run ends with `Dotfiles installation complete.`
 
 When `~/figma/figma` exists, the installer also limits its `origin` fetch rules to `master` and `cpalmer/*`.
 
-Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
+Apart from the empty `.zshrc` placeholder described above, Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first.
 
 Earlier versions of the installer linked `~/.codex` itself into this repo, so Codex kept its sessions and other state here. The installer moves that directory back to `~/.codex` and restores this repo's files.
+
+Run `python3 test-install.py` to check installation in temporary home directories using real Stow and stubbed network/plugin operations.
 
 ## Codex skills
 
