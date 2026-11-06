@@ -141,12 +141,42 @@ codex_defaults_installed=yes
 echo "Verified Codex defaults in $codex_config:"
 cat "$codex_package/config.toml"
 
-# Coder may pre-create an empty .zshrc. Remove only a zero-byte regular
-# file; preserve nonempty files and all existing links for Stow to handle.
-if [ ! -L "$HOME/.zshrc" ] && [ -f "$HOME/.zshrc" ] && [ ! -s "$HOME/.zshrc" ]; then
-  echo "Removing empty $HOME/.zshrc so Stow can symlink the repo version."
-  rm "$HOME/.zshrc"
+# Tools such as Databox edit ~/.zshrc. Keep it local and source the shared
+# configuration first, allowing machine-specific settings to override it.
+zshrc="$HOME/.zshrc"
+zsh_source="$(pwd -P)/zsh/.zshrc"
+zsh_existing="$zshrc"
+if [ -L "$zshrc" ]; then
+  if [ "$zshrc" -ef "$zsh_source" ]; then
+    # Replace only our old Stow link; its content remains in the repo.
+    zsh_existing=/dev/null
+  else
+    echo "Cannot configure $zshrc: it links outside this repo. Move it aside and rerun this script." >&2
+    exit 1
+  fi
+elif [ -e "$zshrc" ] && [ ! -f "$zshrc" ]; then
+  echo "Cannot configure $zshrc: expected a regular file. Move it aside and rerun this script." >&2
+  exit 1
+elif [ ! -e "$zshrc" ]; then
+  zsh_existing=/dev/null
 fi
+
+# Bash's %q also produces valid Zsh quoting for paths with spaces or quotes.
+printf -v zsh_source_line 'source %q' "$zsh_source"
+if ! grep -Fxq -- "$zsh_source_line" "$zsh_existing"; then
+  zsh_merged="$(mktemp "$HOME/.zshrc.XXXXXX")"
+  {
+    printf '%s\n' "$zsh_source_line"
+    cat "$zsh_existing"
+  } > "$zsh_merged"
+  # Keep local permissions and replace only our old Stow symlink.
+  if [ -L "$zshrc" ]; then
+    rm "$zshrc"
+  fi
+  cat "$zsh_merged" > "$zshrc"
+  rm "$zsh_merged"
+fi
+echo "Configured $zshrc to source $zsh_source."
 
 for package in */; do
   [ -d "$package" ] || continue

@@ -1,0 +1,2 @@
+# install.sh adds a source block to the local ~/.zshrc.
+^/\.zshrc$
