@@ -146,16 +146,8 @@ cat "$codex_package/config.toml"
 zshrc="$HOME/.zshrc"
 zsh_source="$(pwd -P)/zsh/.zshrc"
 zsh_existing="$zshrc"
-if [ -L "$zshrc" ]; then
-  if [ "$zshrc" -ef "$zsh_source" ]; then
-    # Replace only our old Stow link; its content remains in the repo.
-    zsh_existing=/dev/null
-  else
-    echo "Cannot configure $zshrc: it links outside this repo. Move it aside and rerun this script." >&2
-    exit 1
-  fi
-elif [ -e "$zshrc" ] && [ ! -f "$zshrc" ]; then
-  echo "Cannot configure $zshrc: expected a regular file. Move it aside and rerun this script." >&2
+if [ -L "$zshrc" ] || { [ -e "$zshrc" ] && [ ! -f "$zshrc" ]; }; then
+  echo "Cannot configure $zshrc: expected a regular local file, not a symlink or directory. Correct it and rerun this script." >&2
   exit 1
 elif [ ! -e "$zshrc" ]; then
   zsh_existing=/dev/null
@@ -163,16 +155,18 @@ fi
 
 # Bash's %q also produces valid Zsh quoting for paths with spaces or quotes.
 printf -v zsh_source_line 'source %q' "$zsh_source"
-if ! grep -Fxq -- "$zsh_source_line" "$zsh_existing"; then
+if grep -Fxq -- "$zsh_source_line" "$zsh_existing"; then
+  if [ "$(grep -Fxc -- "$zsh_source_line" "$zsh_existing")" -ne 1 ]; then
+    echo "Cannot configure $zshrc: duplicate shared source lines. Remove the duplicates and rerun this script." >&2
+    exit 1
+  fi
+else
   zsh_merged="$(mktemp "$HOME/.zshrc.XXXXXX")"
   {
     printf '%s\n' "$zsh_source_line"
     cat "$zsh_existing"
   } > "$zsh_merged"
-  # Keep local permissions and replace only our old Stow symlink.
-  if [ -L "$zshrc" ]; then
-    rm "$zshrc"
-  fi
+  # Write in place to keep local permissions.
   cat "$zsh_merged" > "$zshrc"
   rm "$zsh_merged"
 fi

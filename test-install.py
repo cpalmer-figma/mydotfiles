@@ -92,16 +92,18 @@ class InstallTest(unittest.TestCase):
                 self.install()
                 self.assertEqual(self.zshrc.read_text(), first)
 
-    def test_old_managed_links_are_migrated(self):
+    def test_old_managed_links_are_rejected(self):
         for target in (self.repo / "zsh/.zshrc",
                        Path("..") / self.repo.name / "zsh/.zshrc"):
             with self.subTest(target=target):
-                if self.zshrc.exists():
+                if self.zshrc.is_symlink() or self.zshrc.exists():
                     self.zshrc.unlink()
                 self.zshrc.symlink_to(target)
-                self.install()
-                self.assertNotIn("wait-minifig()", self.zshrc.read_text())
-                self.assertIn("wait-minifig()", (self.repo / "zsh/.zshrc").read_text())
+                before = (self.repo / "zsh/.zshrc").read_bytes()
+                self.install(success=False)
+                self.assertTrue(self.zshrc.is_symlink())
+                self.assertEqual(self.zshrc.readlink(), target)
+                self.assertEqual((self.repo / "zsh/.zshrc").read_bytes(), before)
 
     def test_shared_updates_and_local_overrides(self):
         shared = self.repo / "zsh/.zshrc"
@@ -132,6 +134,14 @@ class InstallTest(unittest.TestCase):
         contents = self.zshrc.read_bytes() + b"# Local setting without final newline"
         self.zshrc.write_bytes(contents)
         self.install()
+        self.assertEqual(self.zshrc.read_bytes(), contents)
+
+    def test_duplicate_source_lines_are_rejected(self):
+        self.install()
+        source_line = self.zshrc.read_bytes()
+        contents = source_line + source_line + b"# local settings\n"
+        self.zshrc.write_bytes(contents)
+        self.install(success=False)
         self.assertEqual(self.zshrc.read_bytes(), contents)
 
     def test_foreign_and_dangling_links_are_preserved(self):
