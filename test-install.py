@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
+import tomlkit
 
 REPO = Path(__file__).resolve().parent
 
@@ -21,6 +22,7 @@ class InstallTest(unittest.TestCase):
         for name in ("codex", "git", "tmux", "zsh"):
             shutil.copytree(REPO / name, self.repo / name, symlinks=True)
         shutil.copy2(REPO / "install.sh", self.repo)
+        shutil.copy2(REPO / "install-codex-config.py", self.repo)
         self.home = root / "home"
         self.home.mkdir()
         self.zshrc = self.home / ".zshrc"
@@ -65,6 +67,81 @@ class InstallTest(unittest.TestCase):
             self.assertIn("Dotfiles installation incomplete", output)
             self.assertIn("Codex defaults installed: yes", output)
         return text
+
+    def update_config(self, success=True):
+        result = subprocess.run(
+            ["python3", str(self.repo / "install-codex-config.py"),
+             str(self.repo / "codex/.codex/config.toml"), str(self.config)],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode == 0, success, result.stderr)
+        return self.config.read_text()
+
+    def test_codex_preserves_toml_syntax_and_comments(self):
+        original = '''# Personal preferences
+"model" = 'old' # keep this comment
+model_reasoning_effort = """
+low"""
+description = """
+# BEGIN mydotfiles — edit in the dotfiles repo
+[not_a_table]
+model = "inside a string"
+# END mydotfiles
+"""
+features.web_search = true
+
+[desktop] # desktop preferences
+appearanceTheme = "system"
+'''
+        self.config.write_text(original)
+        self.config.chmod(0o640)
+        updated = self.update_config()
+        expected = tomlkit.parse(original).unwrap()
+        expected.update(model="gpt-6.1-sol", model_reasoning_effort="high")
+        self.assertEqual(tomlkit.parse(updated).unwrap(), expected)
+        self.assertIn('# keep this comment', updated)
+        self.assertIn('features.web_search = true', updated)
+        self.assertIn('[desktop] # desktop preferences', updated)
+        self.assertEqual(self.config.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(self.update_config(), updated)
+
+    def test_codex_removes_legacy_markers(self):
+        self.config.write_text(
+            '# BEGIN mydotfiles — edit in the dotfiles repo\n'
+            + self.config.read_text().split('[desktop]')[0]
+            + '# END mydotfiles\n[desktop]\nappearanceTheme = "system"\n')
+        updated = self.update_config()
+        self.assertNotIn('# BEGIN mydotfiles', updated)
+        self.assertNotIn('# END mydotfiles', updated)
+        self.assertEqual(tomlkit.parse(updated)['model'], 'gpt-6.1-sol')
+        self.assertEqual(self.update_config(), updated)
+
+    def test_codex_invalid_toml_is_unchanged(self):
+        for contents in ('model = "one"\nmodel = "two"\n', '[broken\n'):
+            with self.subTest(contents=contents):
+                self.config.write_text(contents)
+                self.assertEqual(self.update_config(success=False), contents)
+
+    def test_codex_missing_keys_are_added_at_top_level(self):
+        self.config.write_text('# Local settings\n[custom]\nmodel = "local"\n')
+        updated = tomlkit.parse(self.update_config()).unwrap()
+        self.assertEqual(updated, {
+            'model': 'gpt-6.1-sol', 'model_reasoning_effort': 'high',
+            'custom': {'model': 'local'},
+        })
+
+    def test_codex_invalid_defaults_leave_destination_unchanged(self):
+        original = self.config.read_text()
+        (self.repo / 'codex/.codex/config.toml').write_text('model = [broken\n')
+        self.assertEqual(self.update_config(success=False), original)
+
+    def test_codex_config_symlink_is_unchanged(self):
+        self.config.unlink()
+        target = self.repo / 'codex/.codex/config.toml'
+        before = target.read_bytes()
+        self.config.symlink_to(target)
+        self.update_config(success=False)
+        self.assertEqual(target.read_bytes(), before)
+        self.assertTrue(self.config.is_symlink())
 
     def test_empty_placeholder_and_rerun(self):
         self.zshrc.touch()

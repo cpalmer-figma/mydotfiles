@@ -9,7 +9,7 @@ fi' EXIT
 cd "$(dirname "$0")"
 
 missing=()
-for dependency in stow tmux git gh; do
+for dependency in stow tmux git gh python3; do
   command -v "$dependency" >/dev/null 2>&1 || missing+=("$dependency")
 done
 
@@ -56,63 +56,23 @@ fi
 
 # Codex rewrites ~/.codex/config.toml when it saves settings, which would
 # replace a link, so stow skips that file (see codex/.stow-local-ignore).
-# Keep this repository's top-level settings in a marked block at the top.
+# Use a formatting-preserving TOML editor, isolated when it isn't available.
+codex_python=python3
+if ! "$codex_python" -c 'import tomlkit' >/dev/null 2>&1; then
+  codex_venv="${XDG_CACHE_HOME:-$HOME/.cache}/mydotfiles/toml-editor"
+  if [ ! -x "$codex_venv/bin/python" ]; then
+    if ! python3 -m venv "$codex_venv"; then
+      echo "Cannot create the TOML editor environment. On Debian/Ubuntu, install python3-venv and rerun ./install.sh." >&2
+      exit 1
+    fi
+  fi
+  codex_python="$codex_venv/bin/python"
+  if ! "$codex_python" -c 'import tomlkit' >/dev/null 2>&1; then
+    "$codex_python" -m pip install 'tomlkit==0.15.1'
+  fi
+fi
 mkdir -p "$HOME/.codex"
-codex_existing="$codex_config"
-[ -e "$codex_existing" ] || codex_existing=/dev/null
-merged="$(mktemp "$codex_config.XXXXXX")"
-{
-  echo '# BEGIN mydotfiles — edit in the dotfiles repo'
-  cat "$codex_package/config.toml"
-  echo '# END mydotfiles'
-  awk '
-    # Collect managed keys to remove old copies outside the marked block.
-    FILENAME == ARGV[1] {
-      if ($0 ~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) {
-        key = $0
-        sub(/[ \t]*=.*/, "", key)
-        sub(/^[ \t]*/, "", key)
-        managed[key] = 1
-      }
-      next
-    }
-    # Codex may drop marker comments when rewriting its settings. Remove
-    # managed top-level keys by name rather than relying on a closing marker.
-    $0 == "# BEGIN mydotfiles — edit in the dotfiles repo" { next }
-    $0 == "# END mydotfiles" { next }
-    /^[ \t]*\[/ { tables = 1 }
-    !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
-      key = $0
-      sub(/[ \t]*=.*/, "", key)
-      sub(/^[ \t]*/, "", key)
-      if (key in managed) next
-    }
-    { print }
-  ' "$codex_package/config.toml" "$codex_existing"
-} > "$merged"
-mv "$merged" "$codex_config"
-
-# Check each managed top-level assignment, including duplicate detection.
-awk '
-  /^[ \t]*\[/ { tables = 1 }
-  !tables && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
-    key = $0
-    sub(/[ \t]*=.*/, "", key)
-    sub(/^[ \t]*/, "", key)
-    value = $0
-    sub(/^[^=]*=[ \t]*/, "", value)
-    sub(/[ \t]*$/, "", value)
-    if (FILENAME == ARGV[1]) expected[key] = value
-    else if (key in expected) {
-      count[key]++
-      if (value != expected[key]) failed = 1
-    }
-  }
-  END {
-    for (key in expected) if (count[key] != 1) failed = 1
-    exit failed
-  }
-' "$codex_package/config.toml" "$codex_config"
+"$codex_python" install-codex-config.py "$codex_package/config.toml" "$codex_config"
 codex_defaults_installed=yes
 echo "Verified Codex defaults in $codex_config:"
 cat "$codex_package/config.toml"
