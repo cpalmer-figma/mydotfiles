@@ -7,7 +7,7 @@ wait-minifig() (
 
   local SECONDS=0 counts ready total
   while true; do
-    counts=$(./minifig status --json | jq -r '
+    counts=$(./minifig service ls --json | jq -r '
       map(select(.desired_active or .status != "stopped"))
       | [(map(select(.status == "healthy" or .status == "completed" or .status == "stopped")) | length), length]
       | @tsv
