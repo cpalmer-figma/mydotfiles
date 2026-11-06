@@ -336,6 +336,30 @@ if 'install' in sys.argv:
         self.env["TEST_GH_STATUS"] = "42"
         self.install(success=False)
 
+    def setup_figma_checkout(self):
+        checkout = self.home / "figma/figma"
+        checkout.mkdir(parents=True)
+        subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin",
+                        "https://example.com/figma.git"], check=True)
+        minifig = checkout / "minifig"
+        minifig.write_text('#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" >> minifig-calls\n'
+                           'exit "${TEST_MINIFIG_STATUS:-0}"\n')
+        minifig.chmod(0o755)
+        return checkout
+
+    def test_install_selects_billing_profile_on_each_run(self):
+        checkout = self.setup_figma_checkout()
+        self.install()
+        self.install()
+        self.assertEqual((checkout / "minifig-calls").read_text().splitlines(),
+                         [str(checkout), "profile", "set", "team/billing", "--wait"] * 2)
+
+    def test_minifig_failure_fails_install(self):
+        self.setup_figma_checkout()
+        self.env["TEST_MINIFIG_STATUS"] = "42"
+        self.install(success=False)
+
 
 if __name__ == "__main__":
     unittest.main()

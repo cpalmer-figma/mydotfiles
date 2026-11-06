@@ -33,7 +33,7 @@ The TOML editor uses an existing Python `tomlkit` installation when available; o
 
 The installer prints the verified Codex defaults and reports whether they were installed if a later step fails. A successful run ends with `Dotfiles installation complete.`
 
-When `~/figma/figma` exists, the installer also limits its `origin` fetch rules to `master` and `cpalmer/*`.
+When `~/figma/figma` is a Git checkout, the installer also limits its `origin` fetch rules to `master` and `cpalmer/*` and selects the `team/billing` Minifig profile with `--wait`. Each install selects that profile again and waits for configuration reconciliation; use `wait-minifig` afterward to wait for service readiness. Minifig must be running for this step to succeed.
 
 Stow won't overwrite existing files, so move any conflicting dotfiles out of the way first. The local `.zshrc` is managed separately as described above. Shared Zsh updates take effect in new shells or after `source ~/.zshrc`, without rerunning installation.
 

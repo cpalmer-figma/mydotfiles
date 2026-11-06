@@ -124,9 +124,13 @@ for package in */; do
   stow --restow --no-folding -t "$HOME" "${package%/}"
 done
 
-# Fetch only master and my branches in the Figma monorepo.
+# Configure the Figma checkout and select the Billing service profile.
 if [ -e "$HOME/figma/figma/.git" ]; then
   git -C "$HOME/figma/figma" remote set-branches origin master 'cpalmer/*'
+  (
+    cd "$HOME/figma/figma"
+    ./minifig profile set team/billing --wait
+  )
 fi
 
 # Codex follows skill-directory links but skips symlinked SKILL.md files.
