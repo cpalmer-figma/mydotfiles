@@ -49,34 +49,10 @@ fi
 codex_package="codex/.codex"
 codex_config="$HOME/.codex/config.toml"
 
-# BEGIN LEGACY MIGRATION: remove this entire block once all machines have
-# upgraded from the installer that linked ~/.codex as a whole directory.
-# Keep the variables above and the stow/config-merge steps below; those are
-# part of normal installation, including fresh installs and future reruns.
-#
-# Earlier installs linked ~/.codex itself into this repository, so Codex kept
-# its state here. Move the directory back to ~/.codex, then restore this
-# repository's files and drop the moved copies of them so stow can link them.
-# Codex's own config.toml stays in ~/.codex.
-if [ -L "$HOME/.codex" ] && [ "$(cd "$HOME/.codex" && pwd -P)" = "$(pwd -P)/$codex_package" ]; then
-  rm "$HOME/.codex"
-  mv "$codex_package" "$HOME/.codex"
-  git checkout -- "$codex_package"
-  git ls-files "$codex_package" | while IFS= read -r file; do
-    copy="$HOME/${file#codex/}"
-    # A copy with changes of its own is kept, and stow reports the conflict.
-    if [ "$file" != "$codex_package/config.toml" ] && cmp -s "$file" "$copy"; then
-      rm "$copy"
-    fi
-  done
-  # Codex saved some paths through the old link.
-  if [ -f "$codex_config" ]; then
-    rewritten="$(mktemp "$codex_config.XXXXXX")"
-    sed "s|$(pwd -P)/$codex_package/|$HOME/.codex/|g" "$codex_config" > "$rewritten"
-    mv "$rewritten" "$codex_config"
-  fi
+if [ -L "$HOME/.codex" ] || { [ -e "$HOME/.codex" ] && [ ! -d "$HOME/.codex" ]; }; then
+  echo "Cannot configure $HOME/.codex: expected a real directory. Correct it and rerun this script." >&2
+  exit 1
 fi
-# END LEGACY MIGRATION
 
 # Codex rewrites ~/.codex/config.toml when it saves settings, which would
 # replace a link, so stow skips that file (see codex/.stow-local-ignore).
@@ -175,8 +151,7 @@ echo "Configured $zshrc to source $zsh_source."
 for package in */; do
   [ -d "$package" ] || continue
   # Link each file rather than whole directories, so apps that write into a
-  # directory such as ~/.codex don't write into this repository. Restowing
-  # also replaces directory links made by earlier installs.
+  # directory such as ~/.codex don't write into this repository.
   stow --restow --no-folding -t "$HOME" "${package%/}"
 done
 
@@ -193,16 +168,6 @@ for skill in "$(pwd -P)/codex/.agents/skills/"*/; do
   target="$HOME/.agents/skills/${skill##*/}"
   if [ -L "$target" ] && [ "$(readlink "$target")" = "$skill" ]; then
     continue
-  fi
-  # Migrate old file links. Stow removes only links to this skill, then
-  # remove empty directories while preserving any unrelated files.
-  if [ -d "$target" ] && [ ! -L "$target" ]; then
-    stow --delete -d "${skill%/*}" -t "$target" "${skill##*/}"
-    find "$target" -depth -type d -empty -delete
-    if [ -e "$target" ]; then
-      echo "Cannot migrate skill: $target contains other files. Move it aside and rerun this script." >&2
-      exit 1
-    fi
   fi
   if [ -e "$target" ] || [ -L "$target" ]; then
     echo "Cannot link skill: $target already exists. Move it aside and rerun this script." >&2

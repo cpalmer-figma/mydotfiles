@@ -162,6 +162,29 @@ class InstallTest(unittest.TestCase):
         self.install(success=False)
         self.assertEqual(marker.read_text(), "local content")
 
+    def test_codex_directory_symlink_is_rejected(self):
+        codex_dir = self.config.parent
+        shutil.rmtree(codex_dir)
+        target = self.repo / "codex/.codex"
+        before = (target / "config.toml").read_bytes()
+        codex_dir.symlink_to(target, target_is_directory=True)
+        result = subprocess.run(["bash", str(self.repo / "install.sh")],
+                                env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expected a real directory", result.stderr)
+        self.assertEqual(codex_dir.readlink(), target)
+        self.assertEqual((target / "config.toml").read_bytes(), before)
+
+    def test_old_skill_file_links_are_rejected(self):
+        skill = next((self.repo / "codex/.agents/skills").glob("*/SKILL.md")).parent
+        target = self.home / ".agents/skills" / skill.name
+        target.mkdir(parents=True)
+        old_link = target / "SKILL.md"
+        old_link.symlink_to(skill / "SKILL.md")
+        self.install(success=False)
+        self.assertFalse(target.is_symlink())
+        self.assertEqual(old_link.readlink(), skill / "SKILL.md")
+
     def test_gh_failure_leaves_defaults_installed(self):
         self.env["TEST_GH_STATUS"] = "42"
         self.install(success=False)
