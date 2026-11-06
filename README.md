@@ -29,7 +29,7 @@ The installer:
 4. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
 5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
-The TOML editor uses an existing Python `tomlkit` installation when available; otherwise the installer installs version 0.15.1 in an isolated environment under `${XDG_CACHE_HOME:-~/.cache}/mydotfiles/toml-editor`. This requires Python venv support (`python3-venv` on Debian/Ubuntu) and network access on first setup.
+The TOML editor uses an existing Python `tomlkit` installation when available; otherwise the installer installs version 0.15.1 in an isolated environment under `${XDG_CACHE_HOME:-~/.cache}/mydotfiles/toml-editor`. On Debian/Ubuntu, the installer installs the version-matched Python venv package when needed and repairs partially created environments on reruns. Other platforms need Python venv/ensurepip support. First setup requires network access.
 
 The installer prints the verified Codex defaults and reports whether they were installed if a later step fails. A successful run ends with `Dotfiles installation complete.`
 

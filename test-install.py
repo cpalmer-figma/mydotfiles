@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -149,6 +150,75 @@ appearanceTheme = "system"
         first_zshrc = self.zshrc.read_text()
         self.assertEqual(self.install(), first)
         self.assertEqual(self.zshrc.read_text(), first_zshrc)
+
+    def check_venv_bootstrap(self, partial):
+        bin_dir = Path(self.env['PATH'].split(os.pathsep)[0])
+        self.env['XDG_CACHE_HOME'] = str(self.home / '.cache')
+        venv = self.home / '.cache/mydotfiles/toml-editor'
+        ready = self.home / 'venv-package-installed'
+        calls = self.home / 'bootstrap-calls'
+        # Model Ubuntu's missing ensurepip without installing real packages.
+        cached_wrapper = (f"#!{sys.executable}\nimport os, sys\n"
+                          "if sys.argv[1:] == ['-m', 'pip', '--version']: sys.exit(0)\n"
+                          f"os.execv({sys.executable!r}, [{sys.executable!r}] + sys.argv[1:])\n")
+        python = bin_dir / 'python3'
+        python.write_text(f'''#!{sys.executable}
+import os, pathlib, sys
+args = sys.argv[1:]
+if args == ['-c', 'import tomlkit']:
+    sys.exit(1)
+if args == ['-c', 'import ensurepip']:
+    sys.exit(0 if pathlib.Path({str(ready)!r}).exists() else 1)
+if args[:2] == ['-c', 'import sys; print(f"{{sys.version_info.major}}.{{sys.version_info.minor}}")']:
+    print('3.10')
+    sys.exit(0)
+if args[:2] == ['-m', 'venv']:
+    assert pathlib.Path({str(ready)!r}).exists(), 'venv support not installed'
+    target = pathlib.Path(args[2]) / 'bin/python'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() or target.is_symlink():
+        target.unlink()
+    target.write_text({cached_wrapper!r})
+    target.chmod(0o755)
+    with open({str(calls)!r}, 'a') as stream:
+        stream.write('venv repaired\\n')
+    sys.exit(0)
+os.execv({sys.executable!r}, [{sys.executable!r}] + args)
+''')
+        python.chmod(0o755)
+        sudo = bin_dir / 'sudo'
+        sudo.write_text(f'''#!{sys.executable}
+import pathlib, sys
+assert sys.argv[1:] in [
+    ['apt-get', 'update'], ['apt-get', 'install', '-y', 'python3.10-venv']
+], sys.argv
+with open({str(calls)!r}, 'a') as stream:
+    stream.write(' '.join(sys.argv[1:]) + '\\n')
+if 'install' in sys.argv:
+    pathlib.Path({str(ready)!r}).touch()
+''')
+        sudo.chmod(0o755)
+        for name in ('uname', 'apt-get'):
+            stub = bin_dir / name
+            stub.write_text('#!/bin/sh\necho Linux\n')
+            stub.chmod(0o755)
+        if partial:
+            cached_python = venv / 'bin/python'
+            cached_python.parent.mkdir(parents=True)
+            cached_python.write_text('#!/bin/sh\nexit 1\n')
+            cached_python.chmod(0o755)
+        self.install()
+        self.assertEqual(calls.read_text().splitlines(), [
+            'apt-get update', 'apt-get install -y python3.10-venv', 'venv repaired',
+        ])
+        self.install()
+        self.assertEqual(len(calls.read_text().splitlines()), 3)
+
+    def test_missing_venv_support_is_installed(self):
+        self.check_venv_bootstrap(partial=False)
+
+    def test_partial_venv_without_pip_is_repaired(self):
+        self.check_venv_bootstrap(partial=True)
 
     def test_fresh_home(self):
         shutil.rmtree(self.config.parent)

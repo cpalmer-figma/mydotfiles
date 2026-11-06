@@ -60,9 +60,18 @@ fi
 codex_python=python3
 if ! "$codex_python" -c 'import tomlkit' >/dev/null 2>&1; then
   codex_venv="${XDG_CACHE_HOME:-$HOME/.cache}/mydotfiles/toml-editor"
-  if [ ! -x "$codex_venv/bin/python" ]; then
+  # Failed venv creation can leave a working Python symlink without pip.
+  # Check pip too, so reruns repair that partial environment.
+  if ! "$codex_venv/bin/python" -m pip --version >/dev/null 2>&1; then
+    if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+      if [ "$(uname -s)" = Linux ] && command -v apt-get >/dev/null 2>&1; then
+        codex_python_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+        sudo apt-get update
+        sudo apt-get install -y "python${codex_python_version}-venv"
+      fi
+    fi
     if ! python3 -m venv "$codex_venv"; then
-      echo "Cannot create the TOML editor environment. On Debian/Ubuntu, install python3-venv and rerun ./install.sh." >&2
+      echo "Cannot create the TOML editor environment. Install venv/ensurepip support for $(command -v python3) and rerun ./install.sh." >&2
       exit 1
     fi
   fi
