@@ -23,13 +23,13 @@ cd ~/mydotfiles
 
 The installer:
 
-1. Installs missing `stow`, `tmux`, `git`, `gh`, and `python3` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
+1. Installs missing `stow`, `tmux`, `git`, `gh`, and `curl` dependencies via `apt-get` on Linux or Homebrew on macOS. Install [Homebrew](https://brew.sh/) first if needed.
 2. Applies and verifies the Codex defaults before Stow, skill linking, or plugin setup can fail. It uses `tomlkit` to update the settings from `codex/.codex/config.toml` in `~/.codex/config.toml`, preserving unrelated settings, comments, and formatting. Old mydotfiles marker comments are removed. Invalid TOML is rejected without changing the destination. The verified result is written atomically as a regular file; Stow skips it (`codex/.stow-local-ignore`) because Codex can replace symlinks when saving settings. This repo's values win when the installer runs, so change shared defaults here. Figma's system configuration on Coder is left alone.
 3. Keeps `~/.zshrc` as a regular local file and adds a single `source` line at the top pointing to this checkout's `zsh/.zshrc`. Local settings (including Databox additions) stay below it and can override shared defaults. Reruns recognize that exact source line and leave the file unchanged. Symlinks, directories, and duplicate shared source lines are reported as errors and left untouched; old symlinks are no longer migrated. Stow skips `.zshrc` (`zsh/.stow-local-ignore`) and symlinks the other package files with `--no-folding`. Each Codex skill directory is linked separately because Codex skips symlinked `SKILL.md` files.
 4. Installs the [GitHub CLI stack extension](https://github.com/github/gh-stack) if it isn't already installed.
 5. Clones [TPM](https://github.com/tmux-plugins/tpm) and installs the tmux plugins.
 
-The TOML editor uses an existing Python `tomlkit` installation when available; otherwise the installer installs version 0.15.1 in an isolated environment under `${XDG_CACHE_HOME:-~/.cache}/mydotfiles/toml-editor`. On Debian/Ubuntu, the installer installs the version-matched Python venv package when needed and repairs partially created environments on reruns. Other platforms need Python venv/ensurepip support. First setup requires network access.
+The TOML editor runs with `uv run --no-project --script`. Its inline script metadata pins `tomlkit==0.15.1`; uv creates and reuses the cached environment and selects a compatible Python automatically. The installer reuses uv from `PATH` or `~/.local/bin`, or installs it to `~/.local/bin` with Astral's standalone installer without modifying shell profiles. First setup requires network access. Python's `venv`, `ensurepip`, and pip are no longer needed. The old `~/.cache/mydotfiles/toml-editor` environment is unused and can be deleted.
 
 The installer prints the verified Codex defaults and reports whether they were installed if a later step fails. A successful run ends with `Dotfiles installation complete.`
 
@@ -39,7 +39,7 @@ Stow won't overwrite existing files, so move any conflicting dotfiles out of the
 
 `~/.codex` must be a real directory. Unexpected layouts are reported as errors rather than migrated.
 
-Run `python3 test-install.py` (with `tomlkit` available to that Python interpreter) to check installation in temporary home directories using real Stow and stubbed network/plugin operations.
+Run `uv run --no-project --with tomlkit==0.15.1 test-install.py` to check installation in temporary home directories using real Stow and stubbed network/plugin operations.
 
 ## Codex skills
 

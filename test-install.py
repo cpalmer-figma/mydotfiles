@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,15 @@ class InstallTest(unittest.TestCase):
                                '[profiles.custom]\nmodel_reasoning_effort = "low"\n')
         bin_dir = root / "bin"
         bin_dir.mkdir()
+        uv = bin_dir / "uv"
+        uv.write_text(f'''#!{sys.executable}
+import os, sys
+assert sys.argv[1:4] == ['run', '--no-project', '--script'], sys.argv
+if os.environ.get('TEST_UV_STATUS'):
+    sys.exit(int(os.environ['TEST_UV_STATUS']))
+os.execv({sys.executable!r}, [{sys.executable!r}] + sys.argv[4:])
+''')
+        uv.chmod(0o755)
         gh = bin_dir / "gh"
         gh.write_text('#!/bin/sh\nexit "${TEST_GH_STATUS:-0}"\n')
         gh.chmod(0o755)
@@ -151,74 +161,54 @@ appearanceTheme = "system"
         self.assertEqual(self.install(), first)
         self.assertEqual(self.zshrc.read_text(), first_zshrc)
 
-    def check_venv_bootstrap(self, partial):
+    def hide_uv_from_path(self):
         bin_dir = Path(self.env['PATH'].split(os.pathsep)[0])
-        self.env['XDG_CACHE_HOME'] = str(self.home / '.cache')
-        venv = self.home / '.cache/mydotfiles/toml-editor'
-        ready = self.home / 'venv-package-installed'
-        calls = self.home / 'bootstrap-calls'
-        # Model Ubuntu's missing ensurepip without installing real packages.
-        cached_wrapper = (f"#!{sys.executable}\nimport os, sys\n"
-                          "if sys.argv[1:] == ['-m', 'pip', '--version']: sys.exit(0)\n"
-                          f"os.execv({sys.executable!r}, [{sys.executable!r}] + sys.argv[1:])\n")
-        python = bin_dir / 'python3'
-        python.write_text(f'''#!{sys.executable}
-import os, pathlib, sys
-args = sys.argv[1:]
-if args == ['-c', 'import tomlkit']:
-    sys.exit(1)
-if args == ['-c', 'import ensurepip']:
-    sys.exit(0 if pathlib.Path({str(ready)!r}).exists() else 1)
-if args[:2] == ['-c', 'import sys; print(f"{{sys.version_info.major}}.{{sys.version_info.minor}}")']:
-    print('3.10')
-    sys.exit(0)
-if args[:2] == ['-m', 'venv']:
-    assert pathlib.Path({str(ready)!r}).exists(), 'venv support not installed'
-    target = pathlib.Path(args[2]) / 'bin/python'
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists() or target.is_symlink():
-        target.unlink()
-    target.write_text({cached_wrapper!r})
-    target.chmod(0o755)
-    with open({str(calls)!r}, 'a') as stream:
-        stream.write('venv repaired\\n')
-    sys.exit(0)
-os.execv({sys.executable!r}, [{sys.executable!r}] + args)
-''')
-        python.chmod(0o755)
-        sudo = bin_dir / 'sudo'
-        sudo.write_text(f'''#!{sys.executable}
+        self.env['PATH'] = os.pathsep.join(
+            entry for entry in self.env['PATH'].split(os.pathsep)
+            if entry == str(bin_dir) or not (Path(entry) / 'uv').exists())
+        template = self.home / 'uv-template'
+        (bin_dir / 'uv').rename(template)
+        return bin_dir, template
+
+    def test_uv_in_user_bin_is_reused(self):
+        _, template = self.hide_uv_from_path()
+        target = self.home / '.local/bin/uv'
+        target.parent.mkdir(parents=True)
+        template.rename(target)
+        self.install()
+        self.assertTrue(target.is_file())
+
+    def test_missing_uv_is_installed_without_shell_changes(self):
+        bin_dir, template = self.hide_uv_from_path()
+        calls = self.home / 'uv-downloads'
+        installer = ('set -e\n'
+                     '[ "$UV_NO_MODIFY_PATH" = 1 ]\n'
+                     'mkdir -p "$UV_INSTALL_DIR"\n'
+                     f'cp {shlex.quote(str(template))} "$UV_INSTALL_DIR/uv"\n')
+        curl = bin_dir / 'curl'
+        curl.write_text(f'''#!{sys.executable}
 import pathlib, sys
-assert sys.argv[1:] in [
-    ['apt-get', 'update'], ['apt-get', 'install', '-y', 'python3.10-venv']
-], sys.argv
+assert sys.argv[1:3] == ['-LsSf', 'https://astral.sh/uv/install.sh'], sys.argv
+assert sys.argv[3] == '-o', sys.argv
+pathlib.Path(sys.argv[4]).write_text({installer!r})
 with open({str(calls)!r}, 'a') as stream:
-    stream.write(' '.join(sys.argv[1:]) + '\\n')
-if 'install' in sys.argv:
-    pathlib.Path({str(ready)!r}).touch()
+    stream.write('download\\n')
 ''')
-        sudo.chmod(0o755)
-        for name in ('uname', 'apt-get'):
-            stub = bin_dir / name
-            stub.write_text('#!/bin/sh\necho Linux\n')
-            stub.chmod(0o755)
-        if partial:
-            cached_python = venv / 'bin/python'
-            cached_python.parent.mkdir(parents=True)
-            cached_python.write_text('#!/bin/sh\nexit 1\n')
-            cached_python.chmod(0o755)
+        curl.chmod(0o755)
+        self.zshrc.write_text('# local shell settings\n')
         self.install()
-        self.assertEqual(calls.read_text().splitlines(), [
-            'apt-get update', 'apt-get install -y python3.10-venv', 'venv repaired',
-        ])
         self.install()
-        self.assertEqual(len(calls.read_text().splitlines()), 3)
+        self.assertEqual(calls.read_text(), 'download\n')
+        self.assertTrue(self.zshrc.read_text().endswith('# local shell settings\n'))
 
-    def test_missing_venv_support_is_installed(self):
-        self.check_venv_bootstrap(partial=False)
-
-    def test_partial_venv_without_pip_is_repaired(self):
-        self.check_venv_bootstrap(partial=True)
+    def test_uv_failure_leaves_config_unchanged(self):
+        original = self.config.read_bytes()
+        self.env['TEST_UV_STATUS'] = '42'
+        result = subprocess.run(['bash', str(self.repo / 'install.sh')],
+                                env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 42)
+        self.assertEqual(self.config.read_bytes(), original)
+        self.assertIn('Codex defaults installed: no', result.stderr)
 
     def test_fresh_home(self):
         shutil.rmtree(self.config.parent)

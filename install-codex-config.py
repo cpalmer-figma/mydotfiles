@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["tomlkit==0.15.1"]
+# ///
 """Apply shared Codex settings without replacing unrelated TOML content."""
 import os
 from pathlib import Path

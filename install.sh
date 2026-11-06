@@ -9,7 +9,7 @@ fi' EXIT
 cd "$(dirname "$0")"
 
 missing=()
-for dependency in stow tmux git gh python3; do
+for dependency in stow tmux git gh curl; do
   command -v "$dependency" >/dev/null 2>&1 || missing+=("$dependency")
 done
 
@@ -56,32 +56,26 @@ fi
 
 # Codex rewrites ~/.codex/config.toml when it saves settings, which would
 # replace a link, so stow skips that file (see codex/.stow-local-ignore).
-# Use a formatting-preserving TOML editor, isolated when it isn't available.
-codex_python=python3
-if ! "$codex_python" -c 'import tomlkit' >/dev/null 2>&1; then
-  codex_venv="${XDG_CACHE_HOME:-$HOME/.cache}/mydotfiles/toml-editor"
-  # Failed venv creation can leave a working Python symlink without pip.
-  # Check pip too, so reruns repair that partial environment.
-  if ! "$codex_venv/bin/python" -m pip --version >/dev/null 2>&1; then
-    if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
-      if [ "$(uname -s)" = Linux ] && command -v apt-get >/dev/null 2>&1; then
-        codex_python_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-        sudo apt-get update
-        sudo apt-get install -y "python${codex_python_version}-venv"
-      fi
-    fi
-    if ! python3 -m venv "$codex_venv"; then
-      echo "Cannot create the TOML editor environment. Install venv/ensurepip support for $(command -v python3) and rerun ./install.sh." >&2
-      exit 1
-    fi
-  fi
-  codex_python="$codex_venv/bin/python"
-  if ! "$codex_python" -c 'import tomlkit' >/dev/null 2>&1; then
-    "$codex_python" -m pip install 'tomlkit==0.15.1'
-  fi
+# Reuse uv from PATH or its usual user installation before bootstrapping it.
+if ! command -v uv >/dev/null 2>&1 && [ -x "$HOME/.local/bin/uv" ]; then
+  PATH="$HOME/.local/bin:$PATH"
+  export PATH
 fi
+if ! command -v uv >/dev/null 2>&1; then
+  uv_installer="$(mktemp)"
+  if ! curl -LsSf https://astral.sh/uv/install.sh -o "$uv_installer" ||
+     ! UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh "$uv_installer"; then
+    rm -f "$uv_installer"
+    echo "Cannot install uv. Resolve the error above and rerun ./install.sh." >&2
+    exit 1
+  fi
+  rm -f "$uv_installer"
+  PATH="$HOME/.local/bin:$PATH"
+  export PATH
+fi
+# uv manages and caches the script's environment from its inline dependencies.
 mkdir -p "$HOME/.codex"
-"$codex_python" install-codex-config.py "$codex_package/config.toml" "$codex_config"
+uv run --no-project --script install-codex-config.py "$codex_package/config.toml" "$codex_config"
 codex_defaults_installed=yes
 echo "Verified Codex defaults in $codex_config:"
 cat "$codex_package/config.toml"
