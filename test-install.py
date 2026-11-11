@@ -467,11 +467,25 @@ with open({str(calls)!r}, 'a') as stream:
         self.env['MCP_CALLS'] = str(self.home / 'mcp-calls')
         (checkout / 'minifig').write_text(f'''#!{sys.executable}
 import json, os, sys
+from pathlib import Path
 args = sys.argv[1:]
 with open(os.environ['MCP_CALLS'], 'a') as stream:
     stream.write('minifig ' + ' '.join(args) + '\\n')
 if args == ['system', 'info']:
     print(json.dumps({{'active_profile': 'team/billing'}}))
+if args == ['profile', 'list']:
+    marker = Path('profile-discovered')
+    if marker.exists():
+        print('  personal/cpalmer-mcp-init')
+    else:
+        marker.touch()
+        print('  team/billing')
+if args[:2] == ['profile', 'set']:
+    assert Path('profile-discovered').exists(), 'profile selected before discovery'
+if args == ['prebuild', 'inspect']:
+    images = [] if os.environ.get('TEST_NO_PIXIE_PREBUILD') else [{{'service': 'pixie'}}]
+    print('Active prebuild: test\\n')
+    print(json.dumps({{'prebuild': {{'service_images': images}}}}))
 if args == ['service', 'wait', 'pixie']:
     sys.exit(int(os.environ.get('TEST_PIXIE_STATUS', '0')))
 ''')
@@ -522,6 +536,8 @@ else:
         calls = Path(self.env['MCP_CALLS']).read_text().splitlines()
         self.assertEqual(calls, [
             'minifig system info',
+            'minifig profile list', 'minifig profile list',
+            'minifig prebuild inspect',
             'minifig profile set personal/cpalmer-mcp-init --wait',
             'minifig service start pixie', 'minifig service wait pixie',
             'login-start figma-coderbox', 'login-done figma-coderbox',
@@ -551,6 +567,14 @@ else:
         self.assertIn('login-done figma-coderbox', calls)
         self.assertNotIn('login-start figma-mcp-staging', calls)
         self.assertNotIn('managed statsig', calls)
+
+    def test_mcp_init_reports_missing_pixie_prebuild(self):
+        self.setup_mcp_init()
+        self.env['TEST_NO_PIXIE_PREBUILD'] = '1'
+        result = self.run_mcp_init()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Minifig will build Pixie locally', result.stdout)
+        self.assertNotIn('Starting prebuilt Pixie', result.stdout)
 
     def test_mcp_init_waits_for_healthy_pixie_before_login(self):
         self.setup_mcp_init()

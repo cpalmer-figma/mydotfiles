@@ -29,7 +29,8 @@ mcp-init() (
   setopt pipefail
   local dotfiles_root="${${(%):-%x}:A:h:h}"
   local tool active_profile profile_source profile_target profile_tmp=""
-  local server uv_bin exit_code
+  local server uv_bin exit_code profile_list prebuild_info pixie_source
+  local SECONDS=0 profile_deadline
   if [[ "${FIGMA_CODER_INSTANCE_TYPE:-}" != devbox ]]; then
     print -u2 -- 'mcp-init must run inside a Coder devbox.'
     return 1
@@ -67,7 +68,28 @@ mcp-init() (
   else
     mv -- "$profile_tmp" "$profile_target" || return
   fi
-  print -- 'Starting prebuilt Pixie alongside your current profile services...'
+  # --wait covers reconciliation, not asynchronous discovery of a new file.
+  print -- 'Waiting for Minifig to discover the MCP profile...'
+  profile_deadline=$((SECONDS + 30))
+  while true; do
+    profile_list=$(./minifig profile list) || return
+    if print -r -- "$profile_list" | grep -Eq '^[[:space:]]*personal/cpalmer-mcp-init[[:space:]]*$'; then
+      break
+    fi
+    if (( SECONDS >= profile_deadline )); then
+      print -u2 -- "Minifig did not discover $profile_target within 30 seconds. Check its profile file watcher."
+      return 1
+    fi
+    sleep 1 || return
+  done
+  prebuild_info=$(./minifig prebuild inspect) || return
+  pixie_source=$(print -r -- "$prebuild_info" | sed -n '/^{/,$p' | jq -r \
+    'if any(.prebuild.service_images[]?; .service == "pixie") then "prebuilt" else "local" end') || return
+  if [[ "$pixie_source" == prebuilt ]]; then
+    print -- 'Starting prebuilt Pixie alongside your current profile services...'
+  else
+    print -- 'No Pixie image is available in the active prebuild. Minifig will build Pixie locally; this may take several minutes.'
+  fi
   ./minifig profile set personal/cpalmer-mcp-init --wait || return
   ./minifig service start pixie || return
   ./minifig service wait pixie || {
