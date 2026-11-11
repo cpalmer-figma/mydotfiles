@@ -34,7 +34,7 @@ mcp-init() (
     print -u2 -- 'mcp-init must run inside a Coder devbox.'
     return 1
   fi
-  for tool in codex jq yq; do
+  for tool in codex jq yq python3; do
     command -v "$tool" >/dev/null || {
       print -u2 -- "mcp-init requires the existing $tool command."
       return 1
@@ -83,7 +83,50 @@ mcp-init() (
       print -- 'Statsig uses managed credentials; no browser login is needed.'
     else
       # Deliberately foreground: do not begin the next login until this exits.
-      command codex mcp login "$server" --no-browser || {
+      # Stream output immediately, including prompts without a newline. Keep
+      # stdin attached so Codex can accept a pasted redirect URL as usual.
+      command python3 -c '
+import base64
+import os
+import re
+import subprocess
+import sys
+
+with subprocess.Popen(
+    ["codex", "mcp", "login", sys.argv[1], "--no-browser"],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+) as process:
+    pending = b""
+    copied = False
+    try:
+        while True:
+            chunk = os.read(process.stdout.fileno(), 4096)
+            if not chunk:
+                break
+            os.write(1, chunk)
+            if copied or not os.isatty(1):
+                continue
+            pending = (pending + chunk)[-65536:]
+            clean = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", pending)
+            for match in re.finditer(rb"https://[^\s<>\x22\x27]+(?=[\s<>\x22\x27])", clean):
+                url = match.group(0)
+                if b"client_id=" not in url or not (
+                    b"response_type=code" in url or b"code_challenge=" in url
+                ):
+                    continue
+                # OSC 52 reaches the laptop terminal over SSH; tmux forwards
+                # it with the existing set-clipboard on configuration.
+                os.write(1, b"\x1b]52;c;" + base64.b64encode(url) + b"\x07")
+                os.write(1, b"\n[Authorization URL sent to terminal clipboard.]\n")
+                copied = True
+                break
+        exit_code = process.wait()
+    except KeyboardInterrupt:
+        process.terminate()
+        process.wait()
+        sys.exit(130)
+sys.exit(exit_code if exit_code >= 0 else 128 - exit_code)
+' "$server" || {
         exit_code=$?
         print -u2 -- "Login for $server failed or was cancelled; stopping mcp-init."
         return "$exit_code"

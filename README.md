@@ -49,6 +49,8 @@ Run `source ~/.zshrc`, then `mcp-init` inside your Coder devbox. It creates and 
 
 Logins run in the foreground, in order: `figma-coderbox`, `figma-admin-coderbox`, `figma-mcp-staging`, then managed Statsig configuration, then `hex`. Each browser login uses `--no-browser`: open the printed URL on your laptop, approve it, and paste the full redirect URL back if prompted. The next login starts only when the current command succeeds. A failed or cancelled login stops the sequence. Statsig uses Figma's managed credential wrapper and does not need OAuth. Restart Codex afterward and use `/mcp` to verify the connections.
 
+While each login waits, `mcp-init` also sends its authorization URL to your laptop clipboard using OSC 52. The URL stays visible, and prompts and pasted redirects continue to work normally. Your terminal must support and allow clipboard writes over SSH. The shared tmux configuration already enables forwarding with `set-clipboard on`. Clipboard writes cannot be acknowledged, so if copying is blocked, copy the printed URL manually. No clipboard app or additional package is installed.
+
 ## Codex skills
 
 `babysit-pr` helps work through a PR's feedback in an ongoing chat. Invoke it with `$babysit-pr` and a PR URL to see existing comments, relevant code, assessments, and proposed diffs. Discuss the recommendations, then ask “any updates?” to fetch and show changes since the previous check, including new feedback, commits, and resolved or reopened threads. Checks happen only on request. Babysitting does not authorize code edits or GitHub actions.

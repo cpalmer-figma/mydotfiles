@@ -2,6 +2,9 @@
 """Exercise the installer with real Stow, without changing the user's home."""
 import os
 import json
+import base64
+import pty
+import select
 from pathlib import Path
 import shutil
 import shlex
@@ -488,6 +491,11 @@ else:
     record('login-start ' + server)
     if os.environ.get('TEST_LOGIN_FAILURE') == server:
         sys.exit(37)
+    os.write(2, b'Help: https://example.com/docs\\n')
+    url = 'https://example.com/oauth/authorize?client_id=' + server + '&response_type=code&code_challenge=test'
+    os.write(2, url[:35].encode())
+    os.write(2, (url[35:] + '\\n').encode())
+    os.write(1, b'Paste redirect URL: ')
     reply = b''
     while not reply.endswith(b'\\n'):
         char = os.read(0, 1)
@@ -551,6 +559,39 @@ else:
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('login-start', Path(self.env['MCP_CALLS']).read_text())
         self.assertIn('Pixie did not become healthy', result.stderr)
+
+    def test_mcp_init_copies_each_url_before_waiting_for_approval(self):
+        self.setup_mcp_init()
+        master, slave = pty.openpty()
+        self.addCleanup(os.close, master)
+        process = subprocess.Popen(
+            ['zsh', '-f', '-c', f'source {shlex.quote(str(self.repo / "zsh/.zshrc"))}; mcp-init'],
+            env=self.env, stdin=subprocess.PIPE, stdout=slave, stderr=slave)
+        os.close(slave)
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        output = b''
+
+        def read_until(marker):
+            nonlocal output
+            while marker not in output:
+                ready, _, _ = select.select([master], [], [], 10)
+                self.assertTrue(ready, output.decode(errors='replace'))
+                chunk = os.read(master, 4096)
+                self.assertTrue(chunk)
+                output += chunk
+
+        for server in ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging', 'hex'):
+            url = ('https://example.com/oauth/authorize?client_id=' + server
+                   + '&response_type=code&code_challenge=test').encode()
+            read_until(b'\x1b]52;c;' + base64.b64encode(url) + b'\x07')
+            read_until(b'Paste redirect URL: ')
+            self.assertNotIn('login-done ' + server,
+                             Path(self.env['MCP_CALLS']).read_text())
+            process.stdin.write(b'approve\n')
+            process.stdin.flush()
+        process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, output.decode(errors='replace'))
+        self.assertEqual(output.count(b'\x1b]52;c;'), 4)
 
 
 if __name__ == "__main__":
