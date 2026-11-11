@@ -43,6 +43,12 @@ Run `uv run --no-project --with tomlkit==0.15.1 test-install.py` to check instal
 
 On Coder devboxes, installation also configures Statsig in `~/figma/figma/.codex/config.toml` to use Figma's existing managed-credential wrapper. This avoids a separate Statsig OAuth login on each box. The wrapper fetches the managed key at runtime; no key is stored in dotfiles. Its absolute path survives Figma's bootstrap migration to hosted OAuth. Other MCP entries and Statsig tool policies are preserved; custom Statsig endpoints or commands are rejected rather than overwritten. The setting is installed on each dotfiles run, and takes effect in new Codex sessions. Laptops are unchanged. Access follows the shared credential's permissions, rather than your personal Statsig account.
 
+## Initialize MCPs on a Coder box
+
+Run `source ~/.zshrc`, then `mcp-init` inside your Coder devbox. It creates and selects `personal/cpalmer-mcp-init`, copying the active Minifig profile's services and adding Pixie with `image_source: prebuilt`. It starts Pixie and waits for it to be healthy before beginning authentication. The original profile file is preserved; reruns update the personal profile without duplicating Pixie. The dotfiles installer still selects `team/billing` on startup, so rerun `mcp-init` when you want local MCP access.
+
+Logins run in the foreground, in order: `figma-coderbox`, `figma-admin-coderbox`, `figma-mcp-staging`, then managed Statsig configuration, then `hex`. Each browser login uses `--no-browser`: open the printed URL on your laptop, approve it, and paste the full redirect URL back if prompted. The next login starts only when the current command succeeds. A failed or cancelled login stops the sequence. Statsig uses Figma's managed credential wrapper and does not need OAuth. Restart Codex afterward and use `/mcp` to verify the connections.
+
 ## Codex skills
 
 `babysit-pr` helps work through a PR's feedback in an ongoing chat. Invoke it with `$babysit-pr` and a PR URL to see existing comments, relevant code, assessments, and proposed diffs. Discuss the recommendations, then ask “any updates?” to fetch and show changes since the previous check, including new feedback, commits, and resolved or reopened threads. Checks happen only on request. Babysitting does not authorize code edits or GitHub actions.

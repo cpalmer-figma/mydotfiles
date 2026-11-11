@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the installer with real Stow, without changing the user's home."""
 import os
+import json
 from pathlib import Path
 import shutil
 import shlex
@@ -452,6 +453,104 @@ with open({str(calls)!r}, 'a') as stream:
         self.install(success=False)
         self.assertEqual(self.last_install.returncode, 7)
         self.assertNotIn("retrying", self.last_install.stderr)
+
+    def setup_mcp_init(self):
+        checkout, _, _ = self.setup_statsig_checkout()
+        profile = checkout / 'devbox-profiles/team/billing.yml'
+        profile.parent.mkdir(parents=True)
+        profile.write_text('name: billing\nservice_groups:\n'
+                           '  - name: sinatra\n    image_source: local\n'
+                           '  - name: pixie\n    image_source: local\n')
+        self.env['MCP_CALLS'] = str(self.home / 'mcp-calls')
+        (checkout / 'minifig').write_text(f'''#!{sys.executable}
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ['MCP_CALLS'], 'a') as stream:
+    stream.write('minifig ' + ' '.join(args) + '\\n')
+if args == ['system', 'info']:
+    print(json.dumps({{'active_profile': 'team/billing'}}))
+if args == ['service', 'wait', 'pixie']:
+    sys.exit(int(os.environ.get('TEST_PIXIE_STATUS', '0')))
+''')
+        codex = Path(self.env['PATH'].split(os.pathsep)[0]) / 'codex'
+        codex.write_text(f'''#!{sys.executable}
+import os, sys
+def record(value):
+    with open(os.environ['MCP_CALLS'], 'a') as stream:
+        stream.write(value + '\\n')
+args = sys.argv[1:]
+if args[:2] == ['mcp', 'get']:
+    assert args == ['mcp', 'get', 'statsig'], args
+    record('managed statsig')
+else:
+    assert args[:2] == ['mcp', 'login'] and args[3:] == ['--no-browser'], args
+    server = args[2]
+    record('login-start ' + server)
+    if os.environ.get('TEST_LOGIN_FAILURE') == server:
+        sys.exit(37)
+    reply = b''
+    while not reply.endswith(b'\\n'):
+        char = os.read(0, 1)
+        if not char:
+            sys.exit(38)
+        reply += char
+    assert reply == b'approve\\n', reply
+    record('login-done ' + server)
+''')
+        codex.chmod(0o755)
+        return checkout, profile
+
+    def run_mcp_init(self):
+        return subprocess.run(
+            ['zsh', '-f', '-c', f'source {shlex.quote(str(self.repo / "zsh/.zshrc"))}; mcp-init'],
+            env=self.env, input='approve\n' * 4, capture_output=True,
+            text=True, timeout=20)
+
+    def test_mcp_init_prebuilt_profile_and_sequential_logins(self):
+        checkout, profile = self.setup_mcp_init()
+        original = profile.read_bytes()
+        result = self.run_mcp_init()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = Path(self.env['MCP_CALLS']).read_text().splitlines()
+        self.assertEqual(calls, [
+            'minifig system info',
+            'minifig profile set personal/cpalmer-mcp-init --wait',
+            'minifig service start pixie', 'minifig service wait pixie',
+            'login-start figma-coderbox', 'login-done figma-coderbox',
+            'login-start figma-admin-coderbox', 'login-done figma-admin-coderbox',
+            'login-start figma-mcp-staging', 'login-done figma-mcp-staging',
+            'managed statsig', 'login-start hex', 'login-done hex',
+        ])
+        target = checkout / 'devbox-profiles/personal/cpalmer-mcp-init.yml'
+        rendered = subprocess.check_output(['yq', '-o=json', '.', str(target)], text=True)
+        self.assertEqual(json.loads(rendered), {
+            'name': 'cpalmer-mcp-init', 'service_groups': [
+                {'name': 'sinatra', 'image_source': 'local'},
+                {'name': 'pixie', 'image_source': 'prebuilt'},
+            ]})
+        self.assertEqual(profile.read_bytes(), original)
+        first = target.read_bytes()
+        self.assertEqual(self.run_mcp_init().returncode, 0)
+        self.assertEqual(target.read_bytes(), first)
+        self.assertEqual(list(target.parent.glob('*.yml.*')), [])
+
+    def test_mcp_init_stops_when_login_fails(self):
+        self.setup_mcp_init()
+        self.env['TEST_LOGIN_FAILURE'] = 'figma-admin-coderbox'
+        result = self.run_mcp_init()
+        self.assertEqual(result.returncode, 37, result.stdout + result.stderr)
+        calls = Path(self.env['MCP_CALLS']).read_text()
+        self.assertIn('login-done figma-coderbox', calls)
+        self.assertNotIn('login-start figma-mcp-staging', calls)
+        self.assertNotIn('managed statsig', calls)
+
+    def test_mcp_init_waits_for_healthy_pixie_before_login(self):
+        self.setup_mcp_init()
+        self.env['TEST_PIXIE_STATUS'] = '1'
+        result = self.run_mcp_init()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('login-start', Path(self.env['MCP_CALLS']).read_text())
+        self.assertIn('Pixie did not become healthy', result.stderr)
 
 
 if __name__ == "__main__":
