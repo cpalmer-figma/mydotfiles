@@ -80,6 +80,11 @@ codex_defaults_installed=yes
 echo "Verified Codex defaults in $codex_config:"
 cat "$codex_package/config.toml"
 
+# Configure the project entry so its hosted URL cannot merge with stdio settings.
+if [ "${FIGMA_CODER_INSTANCE_TYPE:-}" = devbox ] && [ -e "$HOME/figma/figma/.git" ]; then
+  uv run --no-project --script install-codex-config.py --coder-statsig "$HOME/figma/figma"
+fi
+
 # Tools such as Databox edit ~/.zshrc. Keep it local and source the shared
 # configuration first, allowing machine-specific settings to override it.
 zshrc="$HOME/.zshrc"

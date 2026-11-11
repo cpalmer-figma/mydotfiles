@@ -41,6 +41,8 @@ Stow won't overwrite existing files, so move any conflicting dotfiles out of the
 
 Run `uv run --no-project --with tomlkit==0.15.1 test-install.py` to check installation in temporary home directories using real Stow and stubbed network/plugin operations.
 
+On Coder devboxes, installation also configures Statsig in `~/figma/figma/.codex/config.toml` to use Figma's existing managed-credential wrapper. This avoids a separate Statsig OAuth login on each box. The wrapper fetches the managed key at runtime; no key is stored in dotfiles. Its absolute path survives Figma's bootstrap migration to hosted OAuth. Other MCP entries and Statsig tool policies are preserved; custom Statsig endpoints or commands are rejected rather than overwritten. The setting is installed on each dotfiles run, and takes effect in new Codex sessions. Laptops are unchanged. Access follows the shared credential's permissions, rather than your personal Statsig account.
+
 ## Codex skills
 
 `babysit-pr` helps work through a PR's feedback in an ongoing chat. Invoke it with `$babysit-pr` and a PR URL to see existing comments, relevant code, assessments, and proposed diffs. Discuss the recommendations, then ask “any updates?” to fetch and show changes since the previous check, including new feedback, commits, and resolved or reopened threads. Checks happen only on request. Babysitting does not authorize code edits or GitHub actions.

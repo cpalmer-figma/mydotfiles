@@ -353,6 +353,66 @@ with open({str(calls)!r}, 'a') as stream:
         self.assertEqual((checkout / "minifig-calls").read_text().splitlines(),
                          [str(checkout), "profile", "set", "team/billing", "--wait"] * 2)
 
+    def setup_statsig_checkout(self):
+        checkout = self.setup_figma_checkout()
+        wrapper = checkout / 'devex/mcp-support/statsig-mcp-server'
+        wrapper.parent.mkdir(parents=True)
+        wrapper.touch()  # Configuration test; never run an MCP or fetch credentials.
+        config = checkout / '.codex/config.toml'
+        config.parent.mkdir()
+        config.write_text('# Project settings\n[mcp_servers.statsig]\n'
+                          'url = "https://api.statsig.com/v1/mcp"\n'
+                          'startup_timeout_sec = 90\n'
+                          'disabled_tools = ["mutate"]\n'
+                          '[mcp_servers.other]\nurl = "https://example.com/mcp"\n')
+        self.env['FIGMA_CODER_INSTANCE_TYPE'] = 'devbox'
+        return checkout, config, wrapper
+
+    def test_coder_statsig_uses_managed_wrapper_and_preserves_policies(self):
+        checkout, config, wrapper = self.setup_statsig_checkout()
+        config.chmod(0o640)
+        self.install()
+        first = config.read_bytes()
+        self.install()
+        self.assertEqual(config.read_bytes(), first)
+        document = tomlkit.parse(config.read_text()).unwrap()
+        server = document['mcp_servers']['statsig']
+        self.assertNotIn('url', server)
+        self.assertEqual(server['command'], str(wrapper.resolve()))
+        self.assertTrue(Path(server['command']).is_absolute())
+        self.assertEqual(server['cwd'], str(checkout.resolve()))
+        self.assertEqual(server['env'], {'DEVCONTAINER': '1', 'INSTANCE_TYPE': 'devbox'})
+        self.assertTrue(server['enabled'])
+        self.assertEqual(server['startup_timeout_sec'], 90)
+        self.assertEqual(server['disabled_tools'], ['mutate'])
+        self.assertEqual(document['mcp_servers']['other']['url'], 'https://example.com/mcp')
+        self.assertIn('# Project settings', config.read_text())
+        self.assertEqual(config.stat().st_mode & 0o777, 0o640)
+
+    def test_coder_statsig_bootstraps_missing_project_config(self):
+        _, config, _ = self.setup_statsig_checkout()
+        config.rename(config.with_name('config.toml.example'))
+        self.install()
+        self.assertIn('command', tomlkit.parse(config.read_text())['mcp_servers']['statsig'])
+
+    def test_statsig_is_unchanged_outside_coder_devbox(self):
+        _, config, _ = self.setup_statsig_checkout()
+        original = config.read_bytes()
+        for instance in ('', 'prodbox'):
+            with self.subTest(instance=instance):
+                self.env['FIGMA_CODER_INSTANCE_TYPE'] = instance
+                self.install()
+                self.assertEqual(config.read_bytes(), original)
+
+    def test_coder_statsig_rejects_custom_and_invalid_config(self):
+        _, config, _ = self.setup_statsig_checkout()
+        for original in ('[mcp_servers.statsig]\nurl = "https://custom.example/mcp"\n',
+                         '[broken\n'):
+            with self.subTest(original=original):
+                config.write_text(original)
+                self.install(success=False)
+                self.assertEqual(config.read_text(), original)
+
     def test_minifig_failure_fails_install(self):
         checkout = self.setup_figma_checkout()
         self.env["TEST_MINIFIG_STATUS"] = "42"
