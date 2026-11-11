@@ -123,7 +123,33 @@ if [ -e "$HOME/figma/figma/.git" ]; then
   git -C "$HOME/figma/figma" remote set-branches origin master 'cpalmer/*'
   (
     cd "$HOME/figma/figma"
-    ./minifig profile set team/billing --wait
+    # Coder runs dotfiles alongside Minifig startup. Retry only a refused
+    # connection; profile/configuration errors should still fail immediately.
+    minifig_deadline=$((SECONDS + 120))
+    while true; do
+      if minifig_output=$(./minifig profile set team/billing --wait 2>&1); then
+        printf '%s\n' "$minifig_output"
+        break
+      else
+        minifig_status=$?
+      fi
+      printf '%s\n' "$minifig_output" >&2
+      case "$minifig_output" in
+        *"Failed to connect to Minifig server:"*"connect: connection refused"*) ;;
+        *) exit "$minifig_status" ;;
+      esac
+      minifig_remaining=$((minifig_deadline - SECONDS))
+      if ((minifig_remaining <= 0)); then
+        echo "Timed out after 120 seconds waiting for Minifig to accept connections. Start Minifig and rerun ./install.sh." >&2
+        exit "$minifig_status"
+      fi
+      minifig_delay=5
+      if ((minifig_remaining < minifig_delay)); then
+        minifig_delay=$minifig_remaining
+      fi
+      echo "Minifig is still starting; retrying in $minifig_delay seconds..." >&2
+      sleep "$minifig_delay"
+    done
   )
 fi
 

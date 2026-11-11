@@ -77,6 +77,7 @@ os.execv({sys.executable!r}, [{sys.executable!r}] + sys.argv[4:])
         else:
             self.assertIn("Dotfiles installation incomplete", output)
             self.assertIn("Codex defaults installed: yes", output)
+        self.last_install = result
         return text
 
     def update_config(self, success=True):
@@ -334,6 +335,13 @@ with open({str(calls)!r}, 'a') as stream:
                         "https://example.com/figma.git"], check=True)
         minifig = checkout / "minifig"
         minifig.write_text('#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" >> minifig-calls\n'
+                           'if [ -n "${TEST_MINIFIG_ERROR:-}" ]; then\n'
+                           '  if [ "${TEST_MINIFIG_RECOVER:-0}" = 1 ] && [ -f minifig-failed ]; then\n'
+                           '    exit 0\n'
+                           '  fi\n'
+                           '  touch minifig-failed\n'
+                           '  echo "$TEST_MINIFIG_ERROR" >&2\n'
+                           'fi\n'
                            'exit "${TEST_MINIFIG_STATUS:-0}"\n')
         minifig.chmod(0o755)
         return checkout
@@ -346,9 +354,44 @@ with open({str(calls)!r}, 'a') as stream:
                          [str(checkout), "profile", "set", "team/billing", "--wait"] * 2)
 
     def test_minifig_failure_fails_install(self):
-        self.setup_figma_checkout()
+        checkout = self.setup_figma_checkout()
         self.env["TEST_MINIFIG_STATUS"] = "42"
+        self.env["TEST_MINIFIG_ERROR"] = "Unknown profile team/billing"
         self.install(success=False)
+        self.assertEqual(self.last_install.returncode, 42)
+        self.assertNotIn("retrying", self.last_install.stderr)
+        self.assertEqual(len((checkout / "minifig-calls").read_text().splitlines()), 5)
+
+    def minifig_connection_refused(self):
+        self.env["TEST_MINIFIG_STATUS"] = "1"
+        self.env["TEST_MINIFIG_ERROR"] = (
+            "Failed to connect to Minifig server: initialize RPC client: "
+            "dial tcp 127.0.0.1:7237: connect: connection refused")
+
+    def test_minifig_startup_race_recovers(self):
+        checkout = self.setup_figma_checkout()
+        self.minifig_connection_refused()
+        self.env["TEST_MINIFIG_RECOVER"] = "1"
+        self.install()
+        self.assertIn("retrying in 5 seconds", self.last_install.stderr)
+        self.assertEqual(len((checkout / "minifig-calls").read_text().splitlines()), 10)
+
+    def test_minifig_connection_timeout_fails_install(self):
+        self.setup_figma_checkout()
+        self.minifig_connection_refused()
+        self.install(success=False)
+        self.assertEqual(self.last_install.returncode, 1)
+        self.assertIn("Timed out after 120 seconds", self.last_install.stderr)
+        self.assertIn("connect: connection refused", self.last_install.stderr)
+
+    def test_minifig_other_connection_error_is_not_retried(self):
+        self.setup_figma_checkout()
+        self.env["TEST_MINIFIG_STATUS"] = "7"
+        self.env["TEST_MINIFIG_ERROR"] = (
+            "Failed to connect to Minifig server: permission denied")
+        self.install(success=False)
+        self.assertEqual(self.last_install.returncode, 7)
+        self.assertNotIn("retrying", self.last_install.stderr)
 
 
 if __name__ == "__main__":
