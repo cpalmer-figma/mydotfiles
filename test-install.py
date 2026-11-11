@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the installer with real Stow, without changing the user's home."""
 import os
-import json
 import base64
 import pty
 import select
@@ -462,30 +461,16 @@ with open({str(calls)!r}, 'a') as stream:
         profile = checkout / 'devbox-profiles/team/billing.yml'
         profile.parent.mkdir(parents=True)
         profile.write_text('name: billing\nservice_groups:\n'
-                           '  - name: sinatra\n    image_source: local\n'
-                           '  - name: pixie\n    image_source: local\n')
+                           '  - name: sinatra\n    image_source: local\n')
         self.env['MCP_CALLS'] = str(self.home / 'mcp-calls')
         (checkout / 'minifig').write_text(f'''#!{sys.executable}
 import json, os, sys
-from pathlib import Path
 args = sys.argv[1:]
 with open(os.environ['MCP_CALLS'], 'a') as stream:
     stream.write('minifig ' + ' '.join(args) + '\\n')
-if args == ['system', 'info']:
-    print(json.dumps({{'active_profile': 'team/billing'}}))
-if args == ['profile', 'list']:
-    marker = Path('profile-discovered')
-    if marker.exists():
-        print('  personal/cpalmer-mcp-init')
-    else:
-        marker.touch()
-        print('  team/billing')
-if args[:2] == ['profile', 'set']:
-    assert Path('profile-discovered').exists(), 'profile selected before discovery'
-if args == ['prebuild', 'inspect']:
-    images = [] if os.environ.get('TEST_NO_PIXIE_PREBUILD') else [{{'service': 'pixie'}}]
-    print('Active prebuild: test\\n')
-    print(json.dumps({{'prebuild': {{'service_images': images}}}}))
+assert args[0] == 'service', 'mcp-init must not manage profiles or prebuilds'
+if args == ['service', 'ls', '--json']:
+    print(json.dumps([{{'name': 'pixie', 'status': os.environ.get('TEST_PIXIE_INITIAL_STATUS', 'stopped')}}]))
 if args == ['service', 'wait', 'pixie']:
     sys.exit(int(os.environ.get('TEST_PIXIE_STATUS', '0')))
 ''')
@@ -528,17 +513,14 @@ else:
             env=self.env, input='approve\n' * 4, capture_output=True,
             text=True, timeout=20)
 
-    def test_mcp_init_prebuilt_profile_and_sequential_logins(self):
+    def test_mcp_init_starts_pixie_without_changing_profile_and_logs_in_sequentially(self):
         checkout, profile = self.setup_mcp_init()
         original = profile.read_bytes()
         result = self.run_mcp_init()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         calls = Path(self.env['MCP_CALLS']).read_text().splitlines()
         self.assertEqual(calls, [
-            'minifig system info',
-            'minifig profile list', 'minifig profile list',
-            'minifig prebuild inspect',
-            'minifig profile set personal/cpalmer-mcp-init --wait',
+            'minifig service ls --json',
             'minifig service start pixie', 'minifig service wait pixie',
             'login-start figma-coderbox', 'login-done figma-coderbox',
             'login-start figma-admin-coderbox', 'login-done figma-admin-coderbox',
@@ -546,17 +528,11 @@ else:
             'managed statsig', 'login-start hex', 'login-done hex',
         ])
         target = checkout / 'devbox-profiles/personal/cpalmer-mcp-init.yml'
-        rendered = subprocess.check_output(['yq', '-o=json', '.', str(target)], text=True)
-        self.assertEqual(json.loads(rendered), {
-            'name': 'cpalmer-mcp-init', 'service_groups': [
-                {'name': 'sinatra', 'image_source': 'local'},
-                {'name': 'pixie', 'image_source': 'prebuilt'},
-            ]})
+        self.assertFalse(target.exists())
         self.assertEqual(profile.read_bytes(), original)
-        first = target.read_bytes()
         self.assertEqual(self.run_mcp_init().returncode, 0)
-        self.assertEqual(target.read_bytes(), first)
-        self.assertEqual(list(target.parent.glob('*.yml.*')), [])
+        self.assertEqual(profile.read_bytes(), original)
+        self.assertFalse(target.parent.exists())
 
     def test_mcp_init_stops_when_login_fails(self):
         self.setup_mcp_init()
@@ -568,13 +544,17 @@ else:
         self.assertNotIn('login-start figma-mcp-staging', calls)
         self.assertNotIn('managed statsig', calls)
 
-    def test_mcp_init_reports_missing_pixie_prebuild(self):
+    def test_mcp_init_does_not_restart_running_or_starting_pixie(self):
         self.setup_mcp_init()
-        self.env['TEST_NO_PIXIE_PREBUILD'] = '1'
-        result = self.run_mcp_init()
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('Minifig will build Pixie locally', result.stdout)
-        self.assertNotIn('Starting prebuilt Pixie', result.stdout)
+        for state in ('healthy', 'starting', 'pending'):
+            with self.subTest(state=state):
+                self.env['TEST_PIXIE_INITIAL_STATUS'] = state
+                calls = Path(self.env['MCP_CALLS'])
+                calls.write_text('')
+                result = self.run_mcp_init()
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn('minifig service start pixie', calls.read_text())
+                self.assertIn('minifig service wait pixie', calls.read_text())
 
     def test_mcp_init_waits_for_healthy_pixie_before_login(self):
         self.setup_mcp_init()
