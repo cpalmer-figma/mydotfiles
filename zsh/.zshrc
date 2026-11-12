@@ -87,7 +87,7 @@ def toml(value):
 def timed_out(*_):
     raise TimeoutError("MCP status check timed out")
 
-def connected():
+def connection_status():
     config = json.loads(subprocess.check_output(
         ["codex", "mcp", "get", server, "--json"], timeout=15))
     if not config.get("enabled", True):
@@ -126,10 +126,7 @@ def connected():
         status = next((s for s in statuses if s["name"] == server), None)
         if status is None:
             raise RuntimeError("Codex returned no status for this MCP")
-        return (status.get("serverCapabilities") is not None
-                and status.get("authStatus") != "notLoggedIn"
-                and status.get("runtimeStatus") in (None, "connected")
-                and not status.get("toolsError"))
+        return status
     finally:
         signal.alarm(0)
         try:
@@ -146,7 +143,11 @@ def connected():
 
 print("Checking connection and authentication...", flush=True)
 try:
-    if connected():
+    status = connection_status()
+    if (status.get("serverCapabilities") is not None
+            and status.get("authStatus") != "notLoggedIn"
+            and status.get("runtimeStatus") in (None, "connected")
+            and not status.get("toolsError")):
         print(server + " is connected and authenticated; skipping login.", flush=True)
         sys.exit(0)
 except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
@@ -155,7 +156,12 @@ except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError)
 if server == "statsig":
     print("Statsig did not connect with its managed credentials; check /mcp in Codex.", file=sys.stderr)
     sys.exit(1)
-print("Connection was not authenticated and ready; starting browser login.", flush=True)
+if (status.get("authStatus") != "notLoggedIn"
+        and status.get("runtimeStatus") != "authenticationRequired"):
+    print(server + ": connection check was inconclusive; preserving existing login "
+          "and skipping browser login. Check /mcp in Codex.", file=sys.stderr)
+    sys.exit(0)
+print("Codex reports authentication required; starting browser login.", flush=True)
 
 with subprocess.Popen(
     ["codex", "mcp", "login", server, "--no-browser"],

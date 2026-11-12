@@ -2,6 +2,7 @@
 """Exercise the installer with real Stow, without changing the user's home."""
 import os
 import base64
+import json
 import pty
 import select
 from pathlib import Path
@@ -508,6 +509,7 @@ elif args[:1] == ['app-server']:
             status = {{'name': server, 'authStatus': auth,
                        'serverCapabilities': {{}} if connected else None,
                        'runtimeStatus': None, 'toolsError': None}}
+            status.update(json.loads(os.environ.get('TEST_STATUS_PATCH', '{{}}')).get(server, {{}}))
             response = {{'id': request['id'], 'result': {{'data': [status]}}}}
             if os.environ.get('TEST_STATUS_ERROR') == server:
                 response = {{'id': request['id'], 'error': {{'message': 'Status unavailable'}}}}
@@ -579,7 +581,7 @@ else:
         self.assertNotIn('login-start', '\n'.join(calls))
         self.assertEqual(result.stdout.count('skipping login'), len(servers))
 
-    def test_mcp_init_does_not_skip_saved_auth_without_a_connection(self):
+    def test_mcp_init_preserves_saved_auth_when_connection_is_unavailable(self):
         self.setup_mcp_init()
         self.env['TEST_CONNECTED'] = 'statsig,figma-coderbox,hex'
         self.env['TEST_AUTH_ONLY'] = 'figma-admin-coderbox'
@@ -588,7 +590,23 @@ else:
         calls = Path(self.env['MCP_CALLS']).read_text()
         self.assertNotIn('login-start figma-coderbox', calls)
         self.assertNotIn('login-start hex', calls)
-        self.assertIn('login-done figma-admin-coderbox', calls)
+        self.assertNotIn('login-start figma-admin-coderbox', calls)
+        self.assertIn('preserving existing login', result.stderr)
+
+    def test_mcp_init_reauthenticates_only_after_an_explicit_auth_failure(self):
+        self.setup_mcp_init()
+        servers = ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging',
+                   'statsig', 'hex', 'figma-admin-prod', 'acryl', 'resolve', 'vantage')
+        self.env['TEST_CONNECTED'] = ','.join(servers)
+        self.env['TEST_STATUS_PATCH'] = json.dumps({
+            'figma-coderbox': {'toolsError': 'HTTP 502'},
+            'figma-admin-coderbox': {'runtimeStatus': 'authenticationRequired'},
+        })
+        result = self.run_mcp_init()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = Path(self.env['MCP_CALLS']).read_text().splitlines()
+        self.assertEqual([c for c in calls if c.startswith('login-start')],
+                         ['login-start figma-admin-coderbox'])
 
     def test_mcp_init_stops_on_status_api_error_without_starting_login(self):
         self.setup_mcp_init()
