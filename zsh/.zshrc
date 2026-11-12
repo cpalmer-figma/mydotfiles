@@ -1,3 +1,13 @@
+# Bare Codex on Coder attaches to the shared daemon through Figma's launcher.
+# Pass arguments through unchanged so management commands and explicit modes work.
+codex() {
+  if [[ "${FIGMA_CODER_INSTANCE_TYPE:-}" == devbox && $# -eq 0 ]]; then
+    command codex --remote unix://
+  else
+    command codex "$@"
+  fi
+}
+
 # Wait for Minifig services, showing elapsed time while they settle.
 wait-minifig() (
   setopt pipefail

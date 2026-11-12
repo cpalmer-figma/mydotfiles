@@ -43,6 +43,10 @@ Run `uv run --no-project --with tomlkit==0.15.1 test-install.py` to check instal
 
 On Coder devboxes, installation also applies the shared MCP defaults in `~/figma/figma/.codex/config.toml`, disabling Resolve and Vantage there so project settings cannot re-enable them over the home defaults. It configures Statsig to use Figma's existing managed-credential wrapper. This avoids a separate Statsig OAuth login on each box. The wrapper fetches the managed key at runtime; no key is stored in dotfiles. Its absolute path survives Figma's bootstrap migration to hosted OAuth. Other MCP entries and Statsig tool policies are preserved; custom Statsig endpoints or commands are rejected rather than overwritten. These settings are installed on each dotfiles run and take effect in new Codex sessions. Statsig configuration on laptops is unchanged. Access follows the shared credential's permissions, rather than your personal Statsig account.
 
+## Codex on a Coder box
+
+Typing bare `codex` on a Coder devbox runs `command codex --remote unix://`, attaching the terminal UI to the shared daemon through Figma's existing launcher. This is a shell function so calls with arguments, such as `codex mcp login hex`, `codex exec`, `codex --no-daemon`, or an explicit `codex --remote ...`, pass through unchanged. Laptops also pass through unchanged. Use `command codex` to bypass the function. Run `source ~/.zshrc` in an existing terminal after pulling the update.
+
 ## Initialize MCPs on a Coder box
 
 Run `source ~/.zshrc`, then `mcp-init` inside your Coder devbox. It checks Pixie's state and starts it directly if needed, using its existing Minifig configuration. If Pixie is already running or starting, it leaves it alone. It waits for Pixie to be healthy before beginning authentication. It does not create, edit, or switch profiles. Starting Pixie may require a local build. A later profile reconciliation can stop manually started services that the profile does not include; rerun `mcp-init` when needed.
