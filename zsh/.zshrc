@@ -61,21 +61,104 @@ mcp-init() (
     print -- "\n=== $server ==="
     if [[ "$server" == statsig ]]; then
       "$uv_bin" run --no-project --script "$dotfiles_root/install-codex-config.py" --coder-statsig "$PWD" || return
-      command codex mcp get statsig || return
-      print -- 'Statsig uses managed credentials; no browser login is needed.'
-    else
-      # Deliberately foreground: do not begin the next login until this exits.
-      # Stream output immediately, including prompts without a newline. Keep
-      # stdin attached so Codex can accept a pasted redirect URL as usual.
-      command python3 -c '
+    fi
+    # Deliberately foreground: do not begin the next server until this exits.
+    # Stream output immediately, including prompts without a newline. Keep
+    # stdin attached so Codex can accept a pasted redirect URL as usual.
+    command python3 -c '
 import base64
+import json
 import os
 import re
+import signal
 import subprocess
 import sys
 
+server = sys.argv[1]
+
+def toml(value):
+    if isinstance(value, dict):
+        return "{" + ",".join(json.dumps(k) + "=" + toml(v)
+                              for k, v in value.items() if v is not None) + "}"
+    if isinstance(value, list):
+        return "[" + ",".join(map(toml, value)) + "]"
+    return json.dumps(value)
+
+def timed_out(*_):
+    raise TimeoutError("MCP status check timed out")
+
+def connected():
+    config = json.loads(subprocess.check_output(
+        ["codex", "mcp", "get", server, "--json"], timeout=15))
+    if not config.get("enabled", True):
+        raise RuntimeError("MCP is disabled in the Codex configuration")
+    # app-server does not load project MCPs for an unscoped status request.
+    # Supply the effective transport, including managed credentials and timeouts.
+    spec = {k: v for k, v in config["transport"].items() if k != "type"}
+    for key in ("startup_timeout_sec", "tool_timeout_sec", "enabled_tools", "disabled_tools"):
+        spec[key] = config.get(key)
+    process = subprocess.Popen(
+        ["codex", "app-server", "-c", "mcp_servers=" + toml({server: spec})],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        text=True, start_new_session=True,
+    )
+    def send(message):
+        process.stdin.write(json.dumps(message) + "\n")
+        process.stdin.flush()
+    def response(request_id):
+        for line in process.stdout:
+            message = json.loads(line)
+            if message.get("id") == request_id:
+                if "error" in message:
+                    raise RuntimeError("Codex rejected the MCP status request")
+                return message["result"]
+        raise RuntimeError("Codex closed the MCP status connection")
+    signal.signal(signal.SIGALRM, timed_out)
+    signal.alarm(60)
+    try:
+        send({"id": 1, "method": "initialize", "params": {
+            "clientInfo": {"name": "mcp_init", "version": "1"}}})
+        response(1)
+        send({"method": "initialized", "params": {}})
+        send({"id": 2, "method": "mcpServerStatus/list", "params": {
+            "serverName": server, "detail": "toolsAndAuthOnly"}})
+        statuses = response(2)["data"]
+        status = next((s for s in statuses if s["name"] == server), None)
+        if status is None:
+            raise RuntimeError("Codex returned no status for this MCP")
+        return (status.get("serverCapabilities") is not None
+                and status.get("authStatus") != "notLoggedIn"
+                and status.get("runtimeStatus") in (None, "connected")
+                and not status.get("toolsError"))
+    finally:
+        signal.alarm(0)
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        process.stdin.close()
+        process.stdout.close()
+
+print("Checking connection and authentication...", flush=True)
+try:
+    if connected():
+        print(server + " is connected and authenticated; skipping login.", flush=True)
+        sys.exit(0)
+except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+    print("Could not check " + server + ": " + str(error), file=sys.stderr)
+    sys.exit(1)
+if server == "statsig":
+    print("Statsig did not connect with its managed credentials; check /mcp in Codex.", file=sys.stderr)
+    sys.exit(1)
+print("Connection was not authenticated and ready; starting browser login.", flush=True)
+
 with subprocess.Popen(
-    ["codex", "mcp", "login", sys.argv[1], "--no-browser"],
+    ["codex", "mcp", "login", server, "--no-browser"],
     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
 ) as process:
     pending = b""
@@ -109,11 +192,10 @@ with subprocess.Popen(
         sys.exit(130)
 sys.exit(exit_code if exit_code >= 0 else 128 - exit_code)
 ' "$server" || {
-        exit_code=$?
-        print -u2 -- "Login for $server failed or was cancelled; stopping mcp-init."
-        return "$exit_code"
-      }
-    fi
+      exit_code=$?
+      print -u2 -- "Setup for $server failed or was cancelled; stopping mcp-init."
+      return "$exit_code"
+    }
   done
   print -- '\nMCP setup complete. Restart Codex and run /mcp to verify the connections.'
 )

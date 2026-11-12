@@ -476,14 +476,42 @@ if args == ['service', 'wait', 'pixie']:
 ''')
         codex = Path(self.env['PATH'].split(os.pathsep)[0]) / 'codex'
         codex.write_text(f'''#!{sys.executable}
-import os, sys
+import json, os, sys
 def record(value):
     with open(os.environ['MCP_CALLS'], 'a') as stream:
         stream.write(value + '\\n')
 args = sys.argv[1:]
 if args[:2] == ['mcp', 'get']:
-    assert args == ['mcp', 'get', 'statsig'], args
-    record('managed statsig')
+    assert args[3:] == ['--json'], args
+    server = args[2]
+    if server == 'statsig':
+        record('managed statsig')
+    print(json.dumps({{'name': server, 'enabled': True,
+                      'transport': {{'type': 'streamable_http', 'url': 'https://example.com/mcp'}}}}))
+elif args[:1] == ['app-server']:
+    assert args[1] == '-c', args
+    server = json.JSONDecoder().raw_decode(args[2][len('mcp_servers={{'):])[0]
+    record('check ' + server)
+    connected = server in os.environ.get('TEST_CONNECTED', 'statsig').split(',')
+    for line in sys.stdin:
+        request = json.loads(line)
+        if request['method'] == 'initialize':
+            response = {{'id': request['id'], 'result': {{}}}}
+        elif request['method'] == 'initialized':
+            continue
+        else:
+            assert request['method'] == 'mcpServerStatus/list', request
+            assert request['params']['serverName'] == server, request
+            auth = 'oAuth' if connected or os.environ.get('TEST_AUTH_ONLY') == server else 'notLoggedIn'
+            if server == 'statsig':
+                auth = 'unsupported'
+            status = {{'name': server, 'authStatus': auth,
+                       'serverCapabilities': {{}} if connected else None,
+                       'runtimeStatus': None, 'toolsError': None}}
+            response = {{'id': request['id'], 'result': {{'data': [status]}}}}
+            if os.environ.get('TEST_STATUS_ERROR') == server:
+                response = {{'id': request['id'], 'error': {{'message': 'Status unavailable'}}}}
+        print(json.dumps(response), flush=True)
 else:
     assert args[:2] == ['mcp', 'login'] and args[3:] == ['--no-browser'], args
     server = args[2]
@@ -522,14 +550,14 @@ else:
         self.assertEqual(calls, [
             'minifig service ls --json',
             'minifig service start pixie', 'minifig service wait pixie',
-            'login-start figma-coderbox', 'login-done figma-coderbox',
-            'login-start figma-admin-coderbox', 'login-done figma-admin-coderbox',
-            'login-start figma-mcp-staging', 'login-done figma-mcp-staging',
-            'managed statsig', 'login-start hex', 'login-done hex',
-            'login-start figma-admin-prod', 'login-done figma-admin-prod',
-            'login-start acryl', 'login-done acryl',
-            'login-start resolve', 'login-done resolve',
-            'login-start vantage', 'login-done vantage',
+            'check figma-coderbox', 'login-start figma-coderbox', 'login-done figma-coderbox',
+            'check figma-admin-coderbox', 'login-start figma-admin-coderbox', 'login-done figma-admin-coderbox',
+            'check figma-mcp-staging', 'login-start figma-mcp-staging', 'login-done figma-mcp-staging',
+            'managed statsig', 'check statsig', 'check hex', 'login-start hex', 'login-done hex',
+            'check figma-admin-prod', 'login-start figma-admin-prod', 'login-done figma-admin-prod',
+            'check acryl', 'login-start acryl', 'login-done acryl',
+            'check resolve', 'login-start resolve', 'login-done resolve',
+            'check vantage', 'login-start vantage', 'login-done vantage',
         ])
         target = checkout / 'devbox-profiles/personal/cpalmer-mcp-init.yml'
         self.assertFalse(target.exists())
@@ -537,6 +565,38 @@ else:
         self.assertEqual(self.run_mcp_init().returncode, 0)
         self.assertEqual(profile.read_bytes(), original)
         self.assertFalse(target.parent.exists())
+
+    def test_mcp_init_skips_all_connected_and_authenticated_servers(self):
+        self.setup_mcp_init()
+        servers = ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging',
+                   'statsig', 'hex', 'figma-admin-prod', 'acryl', 'resolve', 'vantage')
+        self.env['TEST_CONNECTED'] = ','.join(servers)
+        result = self.run_mcp_init()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = Path(self.env['MCP_CALLS']).read_text().splitlines()
+        self.assertEqual([s for s in calls if s.startswith('check ')],
+                         ['check ' + server for server in servers])
+        self.assertNotIn('login-start', '\n'.join(calls))
+        self.assertEqual(result.stdout.count('skipping login'), len(servers))
+
+    def test_mcp_init_does_not_skip_saved_auth_without_a_connection(self):
+        self.setup_mcp_init()
+        self.env['TEST_CONNECTED'] = 'statsig,figma-coderbox,hex'
+        self.env['TEST_AUTH_ONLY'] = 'figma-admin-coderbox'
+        result = self.run_mcp_init()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = Path(self.env['MCP_CALLS']).read_text()
+        self.assertNotIn('login-start figma-coderbox', calls)
+        self.assertNotIn('login-start hex', calls)
+        self.assertIn('login-done figma-admin-coderbox', calls)
+
+    def test_mcp_init_stops_on_status_api_error_without_starting_login(self):
+        self.setup_mcp_init()
+        self.env['TEST_STATUS_ERROR'] = 'figma-coderbox'
+        result = self.run_mcp_init()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Could not check figma-coderbox', result.stderr)
+        self.assertNotIn('login-start', Path(self.env['MCP_CALLS']).read_text())
 
     def test_mcp_init_stops_when_login_fails(self):
         self.setup_mcp_init()
