@@ -510,7 +510,7 @@ else:
     def run_mcp_init(self):
         return subprocess.run(
             ['zsh', '-f', '-c', f'source {shlex.quote(str(self.repo / "zsh/.zshrc"))}; mcp-init'],
-            env=self.env, input='approve\n' * 4, capture_output=True,
+            env=self.env, input='approve\n' * 8, capture_output=True,
             text=True, timeout=20)
 
     def test_mcp_init_starts_pixie_without_changing_profile_and_logs_in_sequentially(self):
@@ -526,6 +526,10 @@ else:
             'login-start figma-admin-coderbox', 'login-done figma-admin-coderbox',
             'login-start figma-mcp-staging', 'login-done figma-mcp-staging',
             'managed statsig', 'login-start hex', 'login-done hex',
+            'login-start figma-admin-prod', 'login-done figma-admin-prod',
+            'login-start acryl', 'login-done acryl',
+            'login-start resolve', 'login-done resolve',
+            'login-start vantage', 'login-done vantage',
         ])
         target = checkout / 'devbox-profiles/personal/cpalmer-mcp-init.yml'
         self.assertFalse(target.exists())
@@ -584,7 +588,8 @@ else:
                 self.assertTrue(chunk)
                 output += chunk
 
-        for server in ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging', 'hex'):
+        for server in ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging', 'hex',
+                       'figma-admin-prod', 'acryl', 'resolve', 'vantage'):
             url = ('https://example.com/oauth/authorize?client_id=' + server
                    + '&response_type=code&code_challenge=test').encode()
             read_until(b'\x1b]52;c;' + base64.b64encode(url) + b'\x07')
@@ -595,7 +600,7 @@ else:
             process.stdin.flush()
         process.communicate(timeout=10)
         self.assertEqual(process.returncode, 0, output.decode(errors='replace'))
-        self.assertEqual(output.count(b'\x1b]52;c;'), 4)
+        self.assertEqual(output.count(b'\x1b]52;c;'), 8)
 
 
 if __name__ == "__main__":

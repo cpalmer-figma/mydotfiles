@@ -57,7 +57,7 @@ mcp-init() (
     return 1
   }
 
-  for server in figma-coderbox figma-admin-coderbox figma-mcp-staging statsig hex; do
+  for server in figma-coderbox figma-admin-coderbox figma-mcp-staging statsig hex figma-admin-prod acryl resolve vantage; do
     print -- "\n=== $server ==="
     if [[ "$server" == statsig ]]; then
       "$uv_bin" run --no-project --script "$dotfiles_root/install-codex-config.py" --coder-statsig "$PWD" || return
