@@ -1,2 +1,10 @@
 model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
+
+[mcp_servers.resolve]
+enabled = false
+url = "https://agent.resolve.ai/mcp/v2"
+
+[mcp_servers.vantage]
+enabled = false
+url = "https://mcp.vantage.sh/mcp"

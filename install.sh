@@ -80,7 +80,8 @@ codex_defaults_installed=yes
 echo "Verified Codex defaults in $codex_config:"
 cat "$codex_package/config.toml"
 
-# Configure the project entry so its hosted URL cannot merge with stdio settings.
+# Apply MCP defaults in the project too, where Figma's entries override home
+# settings, and keep Statsig's hosted URL from merging with stdio settings.
 if [ "${FIGMA_CODER_INSTANCE_TYPE:-}" = devbox ] && [ -e "$HOME/figma/figma/.git" ]; then
   uv run --no-project --script install-codex-config.py --coder-statsig "$HOME/figma/figma"
 fi

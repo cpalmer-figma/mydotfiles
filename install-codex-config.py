@@ -20,10 +20,29 @@ LEGACY_MARKERS = {
 }
 
 
+def apply_defaults(document, defaults):
+    for key, value in defaults.items():
+        if key != "mcp_servers":
+            document[key] = value
+    if "mcp_servers" not in defaults:
+        return
+    servers = document.setdefault("mcp_servers", {})
+    for name, settings in defaults["mcp_servers"].items():
+        server = servers.setdefault(name, {})
+        for key, value in settings.items():
+            # Disabled servers still need a valid transport. Supply the shared
+            # URL only when no transport exists; keep custom URLs and commands.
+            if key == "url" and ("url" in server or "command" in server):
+                continue
+            server[key] = value
+
+
 def update(source, destination, coder_checkout=None):
     if destination.is_symlink() or (destination.exists() and not destination.is_file()):
         raise ValueError(f"{destination}: expected a regular local file")
-    defaults = tomlkit.parse(source.read_text()) if coder_checkout is None else {}
+    defaults = tomlkit.parse(source.read_text())
+    if coder_checkout is not None:
+        defaults = {"mcp_servers": defaults.get("mcp_servers", {})}
     if destination.exists():
         original = destination.read_text()
     else:
@@ -35,12 +54,10 @@ def update(source, destination, coder_checkout=None):
         if isinstance(item, Comment) and item.as_string().strip() in LEGACY_MARKERS:
             del document.body[index]
     document = tomlkit.parse(tomlkit.dumps(document))
-    for key, value in defaults.items():
-        document[key] = value
+    apply_defaults(document, defaults)
     expected = tomlkit.parse(original).unwrap()
-    if coder_checkout is None:
-        expected.update(defaults.unwrap())
-    else:
+    apply_defaults(expected, defaults)
+    if coder_checkout is not None:
         configure_coder_statsig(document, coder_checkout)
         expected = document.unwrap()
     rendered = tomlkit.dumps(document)
@@ -90,8 +107,9 @@ if __name__ == "__main__":
         if sys.argv[1] == "--coder-statsig":
             checkout = Path(sys.argv[2]).resolve()
             destination = checkout / ".codex/config.toml"
-            update(checkout / ".codex/config.toml.example", destination, checkout)
-            print(f"Configured managed Statsig MCP in {destination}")
+            defaults = Path(__file__).parent / "codex/.codex/config.toml"
+            update(defaults, destination, checkout)
+            print(f"Configured managed Statsig and shared MCP defaults in {destination}")
         else:
             update(Path(sys.argv[1]), Path(sys.argv[2]))
     except Exception as error:

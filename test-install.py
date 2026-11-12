@@ -113,6 +113,10 @@ appearanceTheme = "system"
         updated = self.update_config()
         expected = tomlkit.parse(original).unwrap()
         expected.update(model="gpt-6.1-sol", model_reasoning_effort="high")
+        expected['mcp_servers'] = {
+            'resolve': {'enabled': False, 'url': 'https://agent.resolve.ai/mcp/v2'},
+            'vantage': {'enabled': False, 'url': 'https://mcp.vantage.sh/mcp'},
+        }
         self.assertEqual(tomlkit.parse(updated).unwrap(), expected)
         self.assertIn('# keep this comment', updated)
         self.assertIn('features.web_search = true', updated)
@@ -143,7 +147,34 @@ appearanceTheme = "system"
         self.assertEqual(updated, {
             'model': 'gpt-6.1-sol', 'model_reasoning_effort': 'high',
             'custom': {'model': 'local'},
+            'mcp_servers': {
+                'resolve': {'enabled': False, 'url': 'https://agent.resolve.ai/mcp/v2'},
+                'vantage': {'enabled': False, 'url': 'https://mcp.vantage.sh/mcp'},
+            },
         })
+
+    def test_codex_disables_optional_mcps_and_preserves_existing_transports(self):
+        self.config.write_text(self.config.read_text() + '''
+[mcp_servers.resolve] # keep custom connection
+enabled = true
+url = "https://custom.example/resolve"
+disabled_tools = ["mutate"]
+[mcp_servers.vantage]
+enabled = true
+command = "/existing/vantage-wrapper"
+args = ["--read-only"]
+[mcp_servers.other]
+url = "https://example.com/mcp"
+enabled = true
+''')
+        original = tomlkit.parse(self.config.read_text()).unwrap()
+        updated = self.update_config()
+        servers = tomlkit.parse(updated).unwrap()['mcp_servers']
+        for name in ('resolve', 'vantage'):
+            self.assertEqual(servers[name], {**original['mcp_servers'][name], 'enabled': False})
+        self.assertEqual(servers['other'], original['mcp_servers']['other'])
+        self.assertIn('# keep custom connection', updated)
+        self.assertEqual(self.update_config(), updated)
 
     def test_codex_invalid_defaults_leave_destination_unchanged(self):
         original = self.config.read_text()
@@ -390,8 +421,29 @@ with open({str(calls)!r}, 'a') as stream:
         self.assertEqual(server['startup_timeout_sec'], 90)
         self.assertEqual(server['disabled_tools'], ['mutate'])
         self.assertEqual(document['mcp_servers']['other']['url'], 'https://example.com/mcp')
+        for name in ('resolve', 'vantage'):
+            self.assertFalse(document['mcp_servers'][name]['enabled'])
+        self.assertNotIn('model', document)
         self.assertIn('# Project settings', config.read_text())
         self.assertEqual(config.stat().st_mode & 0o777, 0o640)
+
+    def test_coder_project_disables_optional_mcps_despite_existing_enablement(self):
+        _, config, _ = self.setup_statsig_checkout()
+        with config.open('a') as stream:
+            stream.write('\nmodel = "inside_other_server"\n'
+                         '[mcp_servers.resolve]\nenabled = true\n'
+                         'url = "https://custom.example/resolve"\n'
+                         '[mcp_servers.vantage]\nenabled = true\n'
+                         'url = "https://mcp.vantage.sh/mcp"\n')
+        self.install()
+        first = config.read_bytes()
+        self.install()
+        self.assertEqual(config.read_bytes(), first)
+        servers = tomlkit.parse(config.read_text()).unwrap()['mcp_servers']
+        self.assertFalse(servers['resolve']['enabled'])
+        self.assertFalse(servers['vantage']['enabled'])
+        self.assertEqual(servers['resolve']['url'], 'https://custom.example/resolve')
+        self.assertEqual(servers['other']['model'], 'inside_other_server')
 
     def test_coder_statsig_bootstraps_missing_project_config(self):
         _, config, _ = self.setup_statsig_checkout()
@@ -540,7 +592,7 @@ else:
     def run_mcp_init(self):
         return subprocess.run(
             ['zsh', '-f', '-c', f'source {shlex.quote(str(self.repo / "zsh/.zshrc"))}; mcp-init'],
-            env=self.env, input='approve\n' * 8, capture_output=True,
+            env=self.env, input='approve\n' * 6, capture_output=True,
             text=True, timeout=20)
 
     def test_mcp_init_starts_pixie_without_changing_profile_and_logs_in_sequentially(self):
@@ -558,8 +610,6 @@ else:
             'managed statsig', 'check statsig', 'check hex', 'login-start hex', 'login-done hex',
             'check figma-admin-prod', 'login-start figma-admin-prod', 'login-done figma-admin-prod',
             'check acryl', 'login-start acryl', 'login-done acryl',
-            'check resolve', 'login-start resolve', 'login-done resolve',
-            'check vantage', 'login-start vantage', 'login-done vantage',
         ])
         target = checkout / 'devbox-profiles/personal/cpalmer-mcp-init.yml'
         self.assertFalse(target.exists())
@@ -571,7 +621,7 @@ else:
     def test_mcp_init_skips_all_connected_and_authenticated_servers(self):
         self.setup_mcp_init()
         servers = ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging',
-                   'statsig', 'hex', 'figma-admin-prod', 'acryl', 'resolve', 'vantage')
+                   'statsig', 'hex', 'figma-admin-prod', 'acryl')
         self.env['TEST_CONNECTED'] = ','.join(servers)
         result = self.run_mcp_init()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -596,7 +646,7 @@ else:
     def test_mcp_init_reauthenticates_only_after_an_explicit_auth_failure(self):
         self.setup_mcp_init()
         servers = ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging',
-                   'statsig', 'hex', 'figma-admin-prod', 'acryl', 'resolve', 'vantage')
+                   'statsig', 'hex', 'figma-admin-prod', 'acryl')
         self.env['TEST_CONNECTED'] = ','.join(servers)
         self.env['TEST_STATUS_PATCH'] = json.dumps({
             'figma-coderbox': {'toolsError': 'HTTP 502'},
@@ -667,7 +717,7 @@ else:
                 output += chunk
 
         for server in ('figma-coderbox', 'figma-admin-coderbox', 'figma-mcp-staging', 'hex',
-                       'figma-admin-prod', 'acryl', 'resolve', 'vantage'):
+                       'figma-admin-prod', 'acryl'):
             url = ('https://example.com/oauth/authorize?client_id=' + server
                    + '&response_type=code&code_challenge=test').encode()
             read_until(b'\x1b]52;c;' + base64.b64encode(url) + b'\x07')
@@ -678,7 +728,7 @@ else:
             process.stdin.flush()
         process.communicate(timeout=10)
         self.assertEqual(process.returncode, 0, output.decode(errors='replace'))
-        self.assertEqual(output.count(b'\x1b]52;c;'), 8)
+        self.assertEqual(output.count(b'\x1b]52;c;'), 6)
 
 
 if __name__ == "__main__":
