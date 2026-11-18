@@ -1,24 +1,19 @@
 
-## Branch Naming
+# Git
 
-- When creating a feature branch, use cpalmer/<descriptive-slug>.
-- My branch prefix is cpalmer, even though my GitHub username is cpalmer-figma.
+## Branches
+
+- When creating a feature branch name it like "cpalmer/<descriptive-slug>",
+- My branch prefix is cpalmer, even though my GitHub username is cpalmer-figma
 - Prefer descriptive slugs that start with the relevant Linear ticket identifier in lowercase, such as cpalmer/bscale-123-fix-billing-preview
-- Follow repository rules for special branches, such as reverts.
+- To check out a PR whose branch that doesn't start with "cpalmer", use `gh pr checkout <number-or-url>`
 
-## Fetching Figma Branches
+## PRs
 
-- The Figma monorepo's automatic fetches are restricted to `master` and `cpalmer/*`.
-- To check out a PR whose branch has another prefix, use `gh pr checkout <number-or-url>`. It fetches the PR branch directly; a generic `git fetch` will not discover it under the restricted fetch rules.
-- Keep the fetch restrictions in place rather than enabling fetches of all branches.
+- Use `gh stack` for managing stacked PRs
+- Do not push to branches associated with a PR without explicit user approval
 
-## Linear
+# Project Context
 
-- Find and read the Linear ticket encoded in the machine's hostname to locate additional context for work
-- Always consult the user and obtain explicit approval before editing or changing Linear tickets in any way
-
-## Figma Build Knowledge
-
-- For Figma monorepo Ruby/Sorbet, Sinatra backend, or internal AdminApp work, use the `figma-sinatra-dev` skill before choosing an implementation.
-- When preparing a Figma PR or its description, use the `figma-pr-prep` skill. Use the `babysit-pr` skill for ongoing review-feedback checks.
-
+- Assume work is being done in the context of a Linear ticket, the ticket id can be found encoded in the `hostname` of this Coder machine, use the Linear MCP to find additional context on this work
+- Do not edit/write to this or any other Linear ticket unless given explicit user approval
